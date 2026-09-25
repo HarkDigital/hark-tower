@@ -46,6 +46,8 @@ export interface WorldParams {
   fog: number
   /** multiplier on sky reflections (scene.environmentIntensity) */
   env: number
+  /** wind sway at the tower top (m); the phase runs on its own clock (reduced motion: keep 0) */
+  sway: number
 }
 
 type Key = {
@@ -80,6 +82,7 @@ export const WORLD_DEFAULTS = {
   crown: 0,
   fog: 1,
   env: 1,
+  sway: 0,
 }
 
 const SKY_VERT = /* glsl */ `
@@ -155,6 +158,8 @@ export class World {
     crown: 0,
     fog: 1,
     env: 1,
+    sway: 0,
+    swayPhase: 0,
     yaw: 0.6,
     reach: 0.55,
     drop: 18,
@@ -243,6 +248,7 @@ export class World {
     p.crown = WORLD_DEFAULTS.crown
     p.fog = WORLD_DEFAULTS.fog
     p.env = WORLD_DEFAULTS.env
+    p.sway = WORLD_DEFAULTS.sway
     p.crane.yaw = 0.6
     p.crane.reach = 0.55
     p.crane.drop = 18
@@ -312,6 +318,8 @@ export class World {
     c.crown += (p.crown - c.crown) * k
     c.fog += (p.fog - c.fog) * k
     c.env += (p.env - c.env) * k
+    c.sway += (p.sway - c.sway) * (this.first ? 1 : 1 - Math.exp(-1.6 * frame.dt))
+    c.swayPhase += frame.dt * 2.1
     let dy = p.crane.yaw - c.yaw
     dy = Math.atan2(Math.sin(dy), Math.cos(dy))
     c.yaw += dy * k
@@ -337,11 +345,11 @@ export class World {
 
     // the tower
     const night = u.uNight.value
-    this.tower.update({ built: c.built, glazed: c.glazed, fitted: c.fitted, ghost: c.ghost, crown: c.crown, night }, frame.time)
+    this.tower.update({ sway: c.sway, swayPhase: c.swayPhase, built: c.built, glazed: c.glazed, fitted: c.fitted, ghost: c.ghost, crown: c.crown, night }, frame.time)
 
     // the crane rides the core, two floors above the steel (hidden once topped out)
     const coreTop = Math.min(FLOORS, c.built + 2) * FLOOR_H
-    this.crane.root.position.set(0, coreTop, 0)
+    this.crane.root.position.set(this.tower.swayAt(coreTop), coreTop, 0)
     this.crane.root.visible = c.crown < 0.98
     this.crane.set(c.yaw, c.reach, c.drop)
     this.crane.update()

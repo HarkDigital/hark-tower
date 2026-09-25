@@ -24,19 +24,25 @@ export const TOWER_H = FLOORS * FLOOR_H
 export const CROWN_Y = TOWER_H + 3
 
 type Uniforms = { uBuilt: { value: number }; uDrop: { value: number } }
+/** shared by every erected part: the top of the tower sways by this (m at the top) */
+const SWAY = { uSway: { value: 0 }, uSwayPhase: { value: 0 } }
 
 /** Patch a material (and a depth material) so instances erect by aFloor vs uBuilt. */
 function erect(mat: THREE.Material, u: Uniforms, key: string) {
   mat.onBeforeCompile = shader => {
     shader.uniforms.uBuilt = u.uBuilt
     shader.uniforms.uDrop = u.uDrop
+    shader.uniforms.uSway = SWAY.uSway
+    shader.uniforms.uSwayPhase = SWAY.uSwayPhase
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
         `#include <common>
         attribute float aFloor;
         uniform float uBuilt;
-        uniform float uDrop;`,
+        uniform float uDrop;
+        uniform float uSway;
+        uniform float uSwayPhase;`,
       )
       .replace(
         '#include <begin_vertex>',
@@ -45,7 +51,11 @@ function erect(mat: THREE.Material, u: Uniforms, key: string) {
         float kk = clamp((uBuilt - aFloor) / 0.35, 0.0, 1.0);
         transformed *= step(0.0001, kk);
         float fall = 1.0 - kk;
-        transformed.y += fall * fall * uDrop;`,
+        transformed.y += fall * fall * uDrop;
+        // wind sway: grows with the square of height (a cantilever), in x and a little z
+        float hRel = clamp((instanceMatrix[3].y + transformed.y) / ${(FLOORS * FLOOR_H).toFixed(1)}, 0.0, 1.2);
+        transformed.x += uSway * hRel * hRel * sin(uSwayPhase);
+        transformed.z += uSway * 0.35 * hRel * hRel * cos(uSwayPhase * 0.83);`,
       )
   }
   mat.customProgramCacheKey = () => `erect-${key}`
@@ -58,6 +68,9 @@ function depthFor(u: Uniforms, key: string) {
 }
 
 export interface TowerState {
+  /** sway amplitude at the top (m) and its phase (radians) */
+  sway: number
+  swayPhase: number
   built: number
   glazed: number
   fitted: number
@@ -319,8 +332,16 @@ export class Tower {
   }
   private crownSign!: THREE.Mesh
 
+  /** metres the top sways at this moment (x), for chapters that ride along */
+  swayAt(y: number) {
+    const hRel = Math.min(1.2, Math.max(0, y / TOWER_H))
+    return SWAY.uSway.value * hRel * hRel * Math.sin(SWAY.uSwayPhase.value)
+  }
+
   update(s: TowerState, time: number) {
     const built = THREE.MathUtils.clamp(s.built, 0, FLOORS)
+    SWAY.uSway.value = s.sway
+    SWAY.uSwayPhase.value = s.swayPhase
     this.steelU.uBuilt.value = built
     this.slabU.uBuilt.value = Math.max(0, built - 1.5)
     this.glassU.uBuilt.value = THREE.MathUtils.clamp(s.glazed, 0, FLOORS)

@@ -115,6 +115,17 @@ export class Crane {
     this.cable.position.y = -this.drop / 2
   }
 
+  /**
+   * Where the hook WILL be for a given pose — deterministic, for placing a
+   * load in the same frame (world.crane.hookWorld is one frame behind, since
+   * the world updates after chapters). baseY = the crane's base height
+   * (World: min(FLOORS, built + 2) * FLOOR_H).
+   */
+  static hookPosition(out: THREE.Vector3, baseY: number, yaw: number, reach: number, drop: number) {
+    const r = THREE.MathUtils.clamp(reach, 0.08, 0.98) * JIB_L
+    return out.set(Math.cos(yaw) * r, baseY + MAST_H + 0.3 - Math.max(1.5, drop), Math.sin(yaw) * r)
+  }
+
   update() {
     this.hook.updateWorldMatrix(true, false)
     this.hookWorld.setFromMatrixPosition(this.hook.matrixWorld)
