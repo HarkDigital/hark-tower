@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { FLOOR_H, FLOORS, MAT, T, TOWER_W, hssGeometry, iBeamGeometry, mergeAll } from '../kit/steel'
+import { FLOOR_H, FLOORS, MAT, T, TC, TOWER_W, hssGeometry, iBeamGeometry, mergeAll } from '../kit/steel'
 import { logoShapes } from '../logo/logo'
 
 /*
@@ -12,8 +12,10 @@ import { logoShapes } from '../logo/logo'
  * floor) drives erection in the vertex shader, so any `built` value poses
  * exactly (screenshots jump straight to it): pieces not yet placed are hidden,
  * the few pieces being placed right now hang a little above their seats and
- * settle (steel drops in, curtain-wall units swing in from outside, metal deck
- * and concrete spread across the floor like a pour).
+ * settle (steel drops the last 0.35 m onto its seat, curtain-wall units swing
+ * in from outside, metal deck and concrete spread across the floor like a
+ * pour). The hang only exists while the build is moving (state.motion): when
+ * the scroll rests every placed piece sits on its seat — nothing hovers.
  *
  * Sequence per floor (what real steel-frame towers look like going up):
  *   steel (built) → metal deck (built - 0.8) → concrete (built - 1.6)
@@ -23,6 +25,10 @@ import { logoShapes } from '../logo/logo'
  * shader that draws the mullions, transoms and spandrel band, tilts each
  * pane's normal a little (real glazing never reflects as one flat mirror), and
  * lights the offices behind fitted floors (warm, bay by bay; strongest at dusk).
+ * So the glass reads as glass at every hour (not just under a blue sky), it
+ * also mirrors the current horizon colour toward grazing angles (fresnel) and
+ * catches a soft glint band from the sun, pane by pane (state.horizon,
+ * sunDir, sunColor, sky — World fills them from the time of day).
  *
  * Geometry: 30 x 30 m, 5 x 5 bays of 6 m, FLOORS floors of FLOOR_H. Centred on
  * the origin, ground at y = 0, main face toward +z.
@@ -122,15 +128,41 @@ export interface TowerState {
   night: number
   /** camera distance to the crown (m): the halo fades up close */
   camToCrown?: number
+  /** 0..1 the build is moving (pieces in the air hang/swing in); 0 = at rest, all seated */
+  motion?: number
+  /** the horizon colour the curtain wall mirrors at grazing angles (linear) */
+  horizon?: THREE.Color
+  /** world direction toward the sun (unit) and its glint colour (0 once it has set) */
+  sunDir?: THREE.Vector3
+  sunColor?: THREE.Color
+  /** 0..1 strength of the glass's sky terms (1 by day) */
+  sky?: number
+  /** 0..1 how warm the horizon is (dawn, golden hour, sunset): lifts the glass's mirror of it */
+  warm?: number
 }
+
+const STEEL_DROP = 0.35
+const GLASS_DROP = 0.9
+const GLASS_OUT_M = 1.6
+const CROWN_OFF = new THREE.Color(T.graphite)
 
 export class Tower {
   root = new THREE.Group()
-  private steelU = U(3.2, 0.06)
+  private steelU = U(STEEL_DROP, 0.06)
   private deckU = U(0, 0.25, 0, 1)
   private slabU = U(0, 0.3, 0, 1)
-  private glassU = U(0.9, 0.12, 1.6)
-  private glassFx = { uFitted: { value: 0 }, uInterior: { value: 0.1 }, uNight: { value: 0 } }
+  private glassU = U(GLASS_DROP, 0.12, GLASS_OUT_M)
+  private glassFx = {
+    uFitted: { value: 0 },
+    uInterior: { value: 0.1 },
+    uNight: { value: 0 },
+    uHorizonCol: { value: new THREE.Color('#c3d9ec') },
+    uSunDirW: { value: new THREE.Vector3(0, 1, 0) },
+    uSunCol: { value: new THREE.Color(0, 0, 0) },
+    uGlassSky: { value: 1 },
+    uGlassWarm: { value: 0 },
+    uGlassLowSun: { value: 0 },
+  }
   private coreMat: THREE.MeshStandardMaterial
   private core: THREE.Mesh
   private ghostMat: THREE.ShaderMaterial
@@ -322,8 +354,9 @@ export class Tower {
     const q = new THREE.Quaternion()
     const col = new THREE.Color()
     // a darker, more neutral base than the kit's glass: from a distance real
-    // reflective glazing reads blue-grey, not bright blue
-    const base = new THREE.Color('#6a8594')
+    // reflective glazing reads blue-grey, not bright blue (at warm hours the
+    // shader lifts it toward neutral so the golden haze it mirrors stays warm)
+    const base = new THREE.Color('#6d8796')
     let seed = 7
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
     for (let f = 0; f < FLOORS; f++) {
@@ -335,7 +368,8 @@ export class Tower {
           mats.push(new THREE.Matrix4().compose(p, q, new THREE.Vector3(1, 1, 1)))
           floors.push(f + ((side * GLASS_PER + k) / (4 * GLASS_PER)) * 0.999)
           // real curtain walls are never perfectly uniform: slight per-unit tint variation
-          col.copy(base).offsetHSL((rnd() - 0.5) * 0.02, (rnd() - 0.5) * 0.05, (rnd() - 0.5) * 0.06)
+          // (lightness varies the most: unit to unit the reflectance steps a little)
+          col.copy(base).offsetHSL((rnd() - 0.5) * 0.02, (rnd() - 0.5) * 0.06, (rnd() - 0.5) * 0.11)
           colors.push(col.r, col.g, col.b)
         }
       }
@@ -359,7 +393,8 @@ export class Tower {
         .replace(
           '#include <common>',
           `#include <common>
-          uniform float uFitted, uInterior, uNight;
+          uniform float uFitted, uInterior, uNight, uGlassSky, uGlassWarm, uGlassLowSun;
+          uniform vec3 uHorizonCol, uSunCol, uSunDirW;
           varying vec2 vPaneUv;
           varying vec3 vPaneSeed;
           varying float vPaneFloor;
@@ -377,13 +412,15 @@ export class Tower {
           // spandrel band hides the slab edge + ceiling void (opaque glass on a dark back-pan)
           float spand = 1.0 - step(0.62, pu.y) * step(pu.y, 3.52);
           float vision = (1.0 - spand) * (1.0 - mull);
-          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.62, 0.64, 0.66), spand);
+          // warm hours: coated glass mirrors the golden haze nearly untinted
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(dot(diffuseColor.rgb, vec3(0.3, 0.45, 0.25))) * 1.9, uGlassWarm * 0.8);
+          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.84, 0.86, 0.88), spand);
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.085, 0.095, 0.105), mull);`,
         )
         .replace(
           '#include <roughnessmap_fragment>',
           `#include <roughnessmap_fragment>
-          roughnessFactor = mix(mix(0.035 + 0.05 * paneH, 0.16, spand), 0.42, mull);`,
+          roughnessFactor = mix(mix(0.03 + 0.05 * paneH, 0.11, spand), 0.42, mull);`,
         )
         .replace(
           '#include <metalnessmap_fragment>',
@@ -418,6 +455,29 @@ export class Tower {
             float facing = clamp(dot(normalize(vNormal), normalize(vViewPosition)), 0.0, 1.0);
             float glow = on * vision * (0.28 + 0.72 * ceil + 1.6 * strip) * (0.35 + 0.65 * facing);
             totalEmissiveRadiance += warm * glow * uInterior * (0.75 + 0.5 * hb);
+          }
+          {
+            // THE GLASS READS AS GLASS at every hour. The reflection (world
+            // space) of the view ray off this pane's tilted normal:
+            vec3 gV = normalize(vViewPosition);
+            vec3 gN = normalize(normal);
+            float ndv = clamp(dot(gN, gV), 0.0, 1.0);
+            vec3 gR = normalize((vec4(reflect(-gV, gN), 0.0) * viewMatrix).xyz);
+            float glassA = (1.0 - mull) * (1.0 - 0.35 * spand);
+            // fresnel toward the horizon colour: strongest at grazing angles and
+            // where the reflection runs close to the horizon line
+            float fr = 1.0 - ndv;
+            fr = fr * fr * fr;
+            float nearH = 1.0 - smoothstep(0.0, 0.8, abs(gR.y));
+            float paneK = 0.7 + 0.6 * paneH;
+            // (by day the blue sky does this on its own: keep it a faint sheen)
+            totalEmissiveRadiance += uHorizonCol * glassA * (0.05 + 0.05 * uGlassWarm + 0.45 * fr) * (0.35 + 0.65 * nearH) * paneK * uGlassSky * mix(0.25, 1.0, uGlassWarm);
+            // a soft sun-glint band while the sun is low: panes whose reflection
+            // passes near it flare (each unit sits a hair off true, so it breaks
+            // up pane by pane); a high sun keeps just its own sharp highlight
+            float sd = max(dot(gR, uSunDirW), 0.0);
+            float glint = pow(sd, 60.0) * 0.4 + pow(sd, 600.0) * 1.6;
+            totalEmissiveRadiance += uSunCol * glassA * glint * uGlassLowSun * (0.25 + 0.75 * twHash(vPaneSeed.xy * 1.9 + vPaneSeed.z * 0.7 + 4.1));
           }`,
         )
     })
@@ -545,7 +605,9 @@ export class Tower {
       new THREE.MeshBasicMaterial({ map: haloTex, color: new THREE.Color(T.signal), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }),
     )
     halo.position.set(0, CROWN_Y + H / 2, -0.8)
-    halo.visible = false
+    // always drawn (opacity drives it): a visibility switch would compile its
+    // program at the crown's ignition, the showcase moment
+    halo.visible = true
     this.root.add(halo)
 
     // a green light line along the parapet (reads from every side at night)
@@ -585,6 +647,8 @@ export class Tower {
     return SWAY.uSway.value * hRel * hRel * Math.sin(SWAY.uSwayPhase.value)
   }
 
+  private crownTmp = new THREE.Color()
+
   update(s: TowerState, time: number) {
     const built = THREE.MathUtils.clamp(s.built, 0, FLOORS)
     SWAY.uSway.value = s.sway
@@ -598,6 +662,18 @@ export class Tower {
     this.glassFx.uFitted.value = THREE.MathUtils.clamp(s.fitted, 0, FLOORS)
     this.glassFx.uNight.value = s.night
     this.glassFx.uInterior.value = 0.035 + 1.25 * s.night
+    if (s.horizon) this.glassFx.uHorizonCol.value.copy(s.horizon)
+    if (s.sunDir) this.glassFx.uSunDirW.value.copy(s.sunDir)
+    if (s.sunColor) this.glassFx.uSunCol.value.copy(s.sunColor)
+    this.glassFx.uGlassSky.value = s.sky ?? 1
+    this.glassFx.uGlassWarm.value = s.warm ?? 0
+    // the glint band only while the sun is low (dawn, golden hour)
+    this.glassFx.uGlassLowSun.value = 1 - THREE.MathUtils.smoothstep(this.glassFx.uSunDirW.value.y, 0.22, 0.5)
+    // pieces hang above / outside their seats only while the build moves
+    const motion = THREE.MathUtils.clamp(s.motion ?? 0, 0, 1)
+    this.steelU.uDrop.value = STEEL_DROP * motion
+    this.glassU.uDrop.value = GLASS_DROP * motion
+    this.glassU.uOut.value = GLASS_OUT_M * motion
     for (const b of this.batches) {
       // first instance that hasn't appeared yet (aFloor >= uBuilt), by binary search
       const v = b.u.uBuilt.value
@@ -627,12 +703,14 @@ export class Tower {
     ;(this.crownSign.userData.back as THREE.Mesh).visible = topped
     // unlit it's a dark sign face; lit it glows Hark green (hotter at night)
     // capped so the sign keeps its Hark green instead of clipping to white
-    this.crownMat.color.set(crownOn > 0.001 ? T.signal : T.graphite).multiplyScalar(crownOn > 0.001 ? 0.25 + crownOn * (1.1 + 0.55 * s.night) : 1)
-    this.crownBand.color.set(T.signal).multiplyScalar(crownOn * (0.5 + 1.1 * s.night))
+    // ignition eases out of the dark sign face (no step at the first frame)
+    this.crownTmp.copy(TC.signal).multiplyScalar(0.25 + crownOn * (1.1 + 0.55 * s.night))
+    this.crownMat.color.copy(CROWN_OFF).lerp(this.crownTmp, THREE.MathUtils.smoothstep(crownOn, 0, 0.15))
+    this.crownBand.color.copy(TC.signal).multiplyScalar(crownOn * (0.5 + 1.1 * s.night))
     const haloMat = this.crownHalo.material as THREE.MeshBasicMaterial
     const far = THREE.MathUtils.smoothstep(s.camToCrown ?? 200, 60, 170)
     haloMat.opacity = crownOn * (0.04 + 0.16 * s.night) * far
-    this.crownHalo.visible = haloMat.opacity > 0.005
+    this.crownHalo.visible = true
     ;(this.crownGhost.material as THREE.LineBasicMaterial).opacity = 0.75 * s.ghost * (1 - crownOn)
     this.crownGhost.visible = s.ghost * (1 - crownOn) > 0.01 && !topped
   }

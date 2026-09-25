@@ -6,7 +6,7 @@ import { nextFrame } from '../../core/yield'
 import { applySite, beat, builtAt } from '../common'
 import { FLOOR_H, FLOORS, MAT, Sparks, T, TOWER_W, etchLabel } from '../../kit/steel'
 import { Crane, JIB_L, MAST_H } from '../../world/crane'
-import { DATUM_FLOORS, ProcessHud, type DatumPoint } from './hud'
+import { DATUM_FLOORS, ProcessHud, type DatumPoint, type HudState } from './hud'
 import * as P from './props'
 import './process.css'
 
@@ -57,7 +57,39 @@ const BRACES = [0, 1, 2, 3, 4].map(k => {
 })
 const LINE_COL = new THREE.Color(T.line)
 
-type Pose = { a: number; r: number; y: number; t: THREE.Vector3; fov: number; side: number; drop: number; pside?: number }
+type Pose = { a: number; r: number; y: number; t: THREE.Vector3; fov: number; side: number; drop: number; pside: number }
+const mkPose = (): Pose => ({ a: 0, r: 0, y: 0, t: new THREE.Vector3(), fov: 45, side: 0, drop: 0, pside: 0 })
+/** Fill a camera key pose in place (no per-frame allocation). */
+function setPose(o: Pose, a: number, r: number, y: number, tx: number, ty: number, tz: number, fov: number, side: number, drop: number, pside = 0) {
+  o.a = a
+  o.r = r
+  o.y = y
+  o.t.set(tx, ty, tz)
+  o.fov = fov
+  o.side = side
+  o.drop = drop
+  o.pside = pside
+  return o
+}
+
+// per-frame scratch (module level: update() and camera() never allocate)
+const _prev = new THREE.Vector3()
+const _next = new THREE.Vector3()
+const _dirA = new THREE.Vector3()
+const _dirB = new THREE.Vector3()
+const _inv = new THREE.Vector3()
+const _hang = new THREE.Vector3()
+const _ideal = new THREE.Vector3()
+const _d = new THREE.Vector3()
+const _p1 = new THREE.Vector3()
+const _p2 = new THREE.Vector3()
+const _off0 = new THREE.Vector3(-60, 40, -30)
+const _poseA = mkPose()
+const _poseB = mkPose()
+const _pose = mkPose()
+/** the four silhouette corners tried for each datum leader (x signs, z signs) */
+const CORNER_X = [1, 1, -1, -1]
+const CORNER_Z = [1, -1, 1, -1]
 
 export default function create(): Chapter {
   const group = new THREE.Group()
@@ -128,10 +160,14 @@ export default function create(): Chapter {
   const pend = new THREE.Vector3(0, -1, 0)
   const DOWN = new THREE.Vector3(0, -1, 0)
 
-  /** Screen position (px) of a world point via the (last frame's) camera. */
+  /** Screen position (px) of a world point via the (last frame's) camera. Returns a shared object: read it before the next call. */
+  const scr = { x: 0, y: 0, ok: false }
   function screen(ctx: ChapterContext, p: THREE.Vector3) {
     proj.copy(p).project(ctx.camera)
-    return { x: (proj.x * 0.5 + 0.5) * S.W, y: (-proj.y * 0.5 + 0.5) * S.H, ok: proj.z < 1 && Number.isFinite(proj.x + proj.y) }
+    scr.x = (proj.x * 0.5 + 0.5) * S.W
+    scr.y = (-proj.y * 0.5 + 0.5) * S.H
+    scr.ok = proj.z < 1 && Number.isFinite(proj.x + proj.y)
+    return scr
   }
 
   /** Visible band for 3D annotations (keeps labels out of the chrome and off the plate). */
@@ -237,7 +273,7 @@ export default function create(): Chapter {
   }
 
   // ------------------------------------------------------------------ camera
-  const keys: { at: number; pose: () => Pose }[] = []
+  const keys: { at: number; pose: (o: Pose) => Pose }[] = []
   const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z)
   function buildKeys() {
     const F = () => S.F
@@ -251,29 +287,31 @@ export default function create(): Chapter {
     const BC = cyl(34, 9)
     keys.push(
       // cut in: riding up the -z face from the glass to the top deck
-      { at: 0.0, pose: () => ({ a: -2.62, r: 36, y: F() - 26, t: V(2, F() - 8, -2), fov: 46, side: 6, drop: 2 }) },
+      { at: 0.0, pose: o => setPose(o, -2.62, 36, F() - 26, 2, F() - 8, -2, 46, 6, 2) },
       // (rise clear of the steel, outside the -z face, then glide in over the deck)
-      { at: 0.05, pose: () => ({ a: -2.72, r: 31, y: F() + 13, t: V(1.5, F() + 5, 12), fov: 44, side: 6, drop: 4 }) },
+      { at: 0.05, pose: o => setPose(o, -2.72, 31, F() + 13, 1.5, F() + 5, 12, 44, 6, 4) },
       // LISTEN: over the surveyor's shoulder, the city ahead
-      { at: 0.085, pose: () => ({ ...LA, y: F() + 16.5, t: V(0.5, F() + 2.5, 30), fov: 42, side: 7, drop: 6, pside: -6 }) },
-      { at: 0.3, pose: () => ({ ...LB, y: F() + 18, t: V(-0.5, F() - 1, 24), fov: 42, side: 6, drop: 6, pside: -5 }) },
+      { at: 0.085, pose: o => setPose(o, LA.a, LA.r, F() + 16.5, 0.5, F() + 2.5, 30, 42, 7, 6, -6) },
+      { at: 0.3, pose: o => setPose(o, LB.a, LB.r, F() + 18, -0.5, F() - 1, 24, 42, 6, 6, -5) },
       // PROTOTYPE: drone orbit above the frontier, the drawing ahead of the steel
-      { at: 0.37, pose: () => ({ a: 2.52, r: 80, y: F() + 27, t: V(0, F() + 8, 0), fov: 40, side: 15, drop: 8 }) },
-      { at: 0.465, pose: () => ({ a: 2.24, r: 76, y: F() + 22, t: V(0, F() + 7, 0), fov: 40, side: 15, drop: 8 }) },
+      { at: 0.37, pose: o => setPose(o, 2.52, 80, F() + 27, 0, F() + 8, 0, 40, 15, 8) },
+      { at: 0.465, pose: o => setPose(o, 2.24, 76, F() + 22, 0, F() + 7, 0, 40, 15, 8) },
       // BUILD: low on the +x face, looking up the cable to the crane; then in to the bolts
-      { at: 0.525, pose: () => ({ ...BA, y: 193, t: V(18, 222, 0.5), fov: 56, side: 5, drop: 6 }) },
-      { at: 0.585, pose: () => ({ ...BB, y: 198, t: V(17, 216, 0.5), fov: 52, side: 5, drop: 5 }) },
-      { at: 0.635, pose: () => ({ ...BC, y: 206, t: V(15, 210.5, -0.5), fov: 40, side: 5, drop: 4 }) },
+      { at: 0.525, pose: o => setPose(o, BA.a, BA.r, 193, 18, 222, 0.5, 56, 5, 6) },
+      { at: 0.585, pose: o => setPose(o, BB.a, BB.r, 198, 17, 216, 0.5, 52, 5, 5) },
+      { at: 0.635, pose: o => setPose(o, BC.a, BC.r, 206, 15, 210.5, -0.5, 40, 5, 4) },
       // (swing wide round the -z side)
-      { at: 0.668, pose: () => ({ a: 2.75, r: 66, y: g().y + 9, t: V(-4, g().y + 10, -12), fov: 44, side: 8, drop: 7 }) },
+      { at: 0.668, pose: o => setPose(o, 2.75, 66, g().y + 9, -4, g().y + 10, -12, 44, 8, 7) },
       // SUPPORT: a three-quarter on the (-x, -z) corner, level with the cradle on the finished glass
-      { at: 0.7, pose: () => ({ a: -2.52, r: 46, y: g().y + 1.5, t: V(g().x * 0.5 - 4, g().y + 7.5, -12), fov: 42, side: 6, drop: 8 }) },
-      { at: 0.785, pose: () => ({ a: -2.4, r: 43, y: g().y + 2.5, t: V(g().x * 0.5 - 4, g().y + 7, -12), fov: 41, side: 6, drop: 8 }) },
+      // (portrait pside: the view slides toward the far, sun-side end of the -z face, where the glazing is
+      // seen at a grazing angle and mirrors the warm horizon and the sun's glint beside the cradle)
+      { at: 0.7, pose: o => setPose(o, -2.52, 46, g().y + 1.5, g().x * 0.5 - 4, g().y + 7.5, -12, 42, 6, 8, 5) },
+      { at: 0.785, pose: o => setPose(o, -2.4, 43, g().y + 2.5, g().x * 0.5 - 4, g().y + 7, -12, 41, 6, 8, 5) },
       // RESULTS: the long lens on the whole top of the tower, crane and all
-      { at: 0.845, pose: () => ({ a: statsA, r: 240, y: 168, t: V(0, 199, 0), fov: 29, side: 36, drop: 34 }) },
-      { at: 0.945, pose: () => ({ a: statsA - 0.07, r: 230, y: 174, t: V(0, 202, 0), fov: 28, side: 36, drop: 34 }) },
+      { at: 0.845, pose: o => setPose(o, statsA, 240, 168, 0, 199, 0, 29, 36, 34) },
+      { at: 0.945, pose: o => setPose(o, statsA - 0.07, 230, 174, 0, 202, 0, 28, 36, 34) },
       // cut out: push in and rise toward the top
-      { at: 1.0, pose: () => ({ a: statsA - 0.13, r: 180, y: 200, t: V(0, 216, 0), fov: 31, side: 28, drop: 26 }) },
+      { at: 1.0, pose: o => setPose(o, statsA - 0.13, 180, 200, 0, 216, 0, 31, 28, 26) },
     )
   }
   let statsA = 2.3
@@ -314,38 +352,44 @@ export default function create(): Chapter {
     const k0 = keys[i]
     const k1 = keys[i + 1]
     const t = smoother(clamp((local - k0.at) / (k1.at - k0.at)))
-    const a = k0.pose()
-    const b = k1.pose()
-    return {
-      a: a.a + wrap(b.a - a.a) * t,
-      r: lerp(a.r, b.r, t),
-      y: lerp(a.y, b.y, t),
-      t: a.t.lerp(b.t, t),
-      fov: lerp(a.fov, b.fov, t),
-      side: lerp(a.side, b.side, t),
-      drop: lerp(a.drop, b.drop, t),
-      pside: lerp(a.pside ?? 0, b.pside ?? 0, t),
-    }
+    const a = k0.pose(_poseA)
+    const b = k1.pose(_poseB)
+    const o = _pose
+    o.a = a.a + wrap(b.a - a.a) * t
+    o.r = lerp(a.r, b.r, t)
+    o.y = lerp(a.y, b.y, t)
+    o.t.copy(a.t).lerp(b.t, t)
+    o.fov = lerp(a.fov, b.fov, t)
+    o.side = lerp(a.side, b.side, t)
+    o.drop = lerp(a.drop, b.drop, t)
+    o.pside = lerp(a.pside, b.pside, t)
+    return o
   }
 
   // ------------------------------------------------------------------ crane
   /** Where this chapter wants the crane: yaw, reach and absolute hook height. */
+  const PARK_YAW = 3.55
+  const PARK_REACH = 0.5
+  const PICK_YAW = 0.14
+  const PICK_REACH = (HALF + 6.5) / JIB_L
   function craneTarget(local: number, out: { yaw: number; reach: number; hookY: number }) {
     const F = S.F
-    const slot = braceMid(HERO)
-    const PARK = { yaw: 3.55, reach: 0.5, hookY: F + 22 }
-    const PICK = { yaw: 0.14, reach: (HALF + 6.5) / JIB_L, hookY: slot.y + HANG - 42 }
+    const slot = BRACES[HERO].mid
+    const parkHook = F + 22
+    const pickHook = slot.y + HANG - 42
     const lp = seg(local, W_PROTO)
     if (local < W_PROTO[0]) {
-      Object.assign(out, PARK)
+      out.yaw = PARK_YAW
+      out.reach = PARK_REACH
+      out.hookY = parkHook
       return out
     }
     if (local < W_BUILD[0]) {
       // slew round to the pick while the frame is a drawing, cable paying out
       const e = smoothstep(0.1, 0.95, lp)
-      out.yaw = PARK.yaw + wrap(PICK.yaw - PARK.yaw) * e
-      out.reach = lerp(PARK.reach, PICK.reach, e)
-      out.hookY = lerp(PARK.hookY, PICK.hookY, smoothstep(0.3, 1, lp))
+      out.yaw = PARK_YAW + wrap(PICK_YAW - PARK_YAW) * e
+      out.reach = lerp(PARK_REACH, PICK_REACH, e)
+      out.hookY = lerp(parkHook, pickHook, smoothstep(0.3, 1, lp))
       return out
     }
     const p = seg(local, W_BUILD)
@@ -353,14 +397,14 @@ export default function create(): Chapter {
     if (p < 0.4) {
       // hoist: the brace rises up the face, slowing as it arrives
       const e = 1 - Math.pow(1 - p / 0.4, 2.2)
-      out.yaw = lerp(PICK.yaw, 0, e)
-      out.reach = PICK.reach
-      out.hookY = lerp(PICK.hookY, slot.y + HANG + 0.35, e)
+      out.yaw = lerp(PICK_YAW, 0, e)
+      out.reach = PICK_REACH
+      out.hookY = lerp(pickHook, slot.y + HANG + 0.35, e)
     } else if (p < 0.64) {
       // trolley in: home it into the bay
       const e = smoothstep(0.52, 0.64, p)
       out.yaw = 0
-      out.reach = lerp(PICK.reach, home, e)
+      out.reach = lerp(PICK_REACH, home, e)
       out.hookY = slot.y + HANG + 0.35 * (1 - smoothstep(0.58, 0.64, p))
     } else {
       // landed; bolted; the slings come off and the hook climbs away
@@ -378,10 +422,16 @@ export default function create(): Chapter {
     return out
   }
 
-  function braceMid(k: number) {
-    const { a, b } = P.braceEnds(k)
-    return a.clone().add(b).multiplyScalar(0.5)
-  }
+  /** the survey shots: the city targets, then the prism on the tower's own steel */
+  const tgt = (i: number) => (i < targets.length ? targets[i] : towerPt)
+
+  // per-frame state handed to the HUD and the crane (reused, never reallocated)
+  const ct = { yaw: 0, reach: 0, hookY: 0 }
+  const statsVis = [0, 0, 0]
+  const fills = [0, 0, 0, 0]
+  const pts: DatumPoint[] = DATUM_FLOORS.map(() => ({ x: 0, y: 0, ok: false }))
+  const hs: HudState = { head: 0, plate: 0, step: 0, fills, stats: statsVis }
+  let cradleLevel = -1
 
   return {
     id: ID,
@@ -609,22 +659,21 @@ export default function create(): Chapter {
       const si = Math.min(shots - 1, Math.floor(sweep))
       const sf = sweep - si
       towerPt.set(PRISM.x, F - 1.75, PRISM.z)
-      const tgt = (i: number) => (i < nT ? targets[i] : towerPt)
       // aim: move to target si over the first 55% of its slot, dwell the rest
       station.scope.updateWorldMatrix(true, false)
       station.scope.localToWorld(muzzle.copy(station.muzzle))
-      const prevP = si === 0 ? targets[0].clone().add(V(-60, 40, -30)) : tgt(si - 1).clone()
-      const nextP = tgt(si).clone()
+      const prevP = si === 0 ? _prev.copy(targets[0]).add(_off0) : _prev.copy(tgt(si - 1))
+      const nextP = _next.copy(tgt(si))
       const mv = smoother(clamp(sf / 0.55))
-      const dirA = prevP.clone().sub(muzzle).normalize()
-      const dirB = nextP.clone().sub(muzzle).normalize()
+      const dirA = _dirA.copy(prevP).sub(muzzle).normalize()
+      const dirB = _dirB.copy(nextP).sub(muzzle).normalize()
       const lenA = prevP.distanceTo(muzzle)
       const lenB = nextP.distanceTo(muzzle)
       const dir = dirA.lerp(dirB, mv).normalize()
       aim.copy(muzzle).addScaledVector(dir, lerp(lenA, lenB, mv))
       const dwell = sf >= 0.55 ? 1 : 0
       // turn the instrument toward the aim
-      const inv = station.root.worldToLocal(aim.clone())
+      const inv = station.root.worldToLocal(_inv.copy(aim))
       station.alidade.rotation.y = Math.atan2(inv.x, inv.z)
       const horiz = Math.hypot(aim.x - muzzle.x, aim.z - muzzle.z)
       station.scope.rotation.x = -Math.atan2(aim.y - muzzle.y, horiz)
@@ -694,7 +743,7 @@ export default function create(): Chapter {
       annotate(cModel, ctx, tmp2.set(-HALF, 57 * FLOOR_H, -HALF), hold * smoothstep(0.35, 0.5, lP))
 
       // ---------------------------------------------------------------- CRANE
-      const ct = craneTarget(local, { yaw: 0, reach: 0, hookY: 0 })
+      craneTarget(local, ct)
       const crane = ctx.world.crane
       const baseY = S.coreTop
       const kc = 1 - Math.exp(-3.2 * dt)
@@ -734,13 +783,16 @@ export default function create(): Chapter {
         const land = smoothstep(0.5, 0.64, lB)
         qSwing.setFromUnitVectors(DOWN, pend)
         if (!reduced) qSwing.multiply(q.setFromAxisAngle(DOWN, 0.05 * Math.sin(frame.time * 0.8) * (1 - land)))
-        const hang = pend.clone().multiplyScalar(HANG).add(hook)
+        const hang = _hang.copy(pend).multiplyScalar(HANG).add(hook)
         // the ideal path (target hook) — the member follows it into the slot
-        const ideal = V(Math.cos(ct.yaw) * ct.reach * JIB_L, ct.hookY - HANG, Math.sin(ct.yaw) * ct.reach * JIB_L)
+        const ideal = _ideal.set(Math.cos(ct.yaw) * ct.reach * JIB_L, ct.hookY - HANG, Math.sin(ct.yaw) * ct.reach * JIB_L)
         if (lB >= 0.64) ideal.copy(slot)
         const settle = lB > 0.64 && !reduced ? -0.05 * Math.sin((lB - 0.64) * 70) * Math.exp(-(lB - 0.64) * 40) : 0
         load.position.copy(hang).lerp(ideal, land)
-        if (lB >= 0.64) load.position.copy(slot).add(V(0, settle, 0))
+        if (lB >= 0.64) {
+          load.position.copy(slot)
+          load.position.y += settle
+        }
         load.quaternion.copy(qSwing).multiply(qHome).slerp(qHome, land)
       }
       // slings from the hook to two pick points on the member
@@ -748,10 +800,10 @@ export default function create(): Chapter {
       slings.visible = slung
       if (slung) {
         const sp = slings.geometry.attributes.position as THREE.BufferAttribute
-        const d = V(1, 0, 0).applyQuaternion(load.quaternion)
+        const d = _d.set(1, 0, 0).applyQuaternion(load.quaternion)
         const h = tmp2.copy(hook).addScaledVector(pend, 0.75)
-        const p1 = load.position.clone().addScaledVector(d, 2.2)
-        const p2 = load.position.clone().addScaledVector(d, -2.2)
+        const p1 = _p1.copy(load.position).addScaledVector(d, 2.2)
+        const p2 = _p2.copy(load.position).addScaledVector(d, -2.2)
         sp.setXYZ(0, h.x, h.y, h.z)
         sp.setXYZ(1, p1.x, p1.y + 0.2, p1.z)
         sp.setXYZ(2, h.x, h.y, h.z)
@@ -781,7 +833,7 @@ export default function create(): Chapter {
         }
       }
       sparks.update(dt)
-      glows.forEach(g => (g.visible = bolting && reduced))
+      for (let i = 0; i < glows.length; i++) glows[i].visible = bolting && reduced
       const buildVis = smoothstep(W_BUILD[0] + 0.01, W_BUILD[0] + 0.04, local) * (1 - smoothstep(W_BUILD[1] - 0.025, W_BUILD[1], local))
       annotate(cBrace, ctx, load.position, buildVis * (1 - smoothstep(0.62, 0.66, lB)))
       annotate(cBolt, ctx, endA, buildVis * smoothstep(0.66, 0.72, lB))
@@ -795,7 +847,7 @@ export default function create(): Chapter {
       S.gondola.set(gx, gy, gz)
       const cradleOn = local > W_BUILD[1] - 0.03
       cradle.visible = ropes.visible = cradleOn
-      davits.forEach(d => (d.visible = cradleOn))
+      for (let i = 0; i < davits.length; i++) davits[i].visible = cradleOn
       if (cradleOn) {
         cradle.position.set(gx, gy, gz)
         cradle.rotation.z = reduced ? 0 : 0.006 * Math.sin(frame.time * 0.7)
@@ -810,47 +862,47 @@ export default function create(): Chapter {
         rp.needsUpdate = true
       }
       const supportVis = smoothstep(W_SUPPORT[0] + 0.01, W_SUPPORT[0] + 0.04, local) * (1 - smoothstep(W_SUPPORT[1] - 0.02, W_SUPPORT[1] + 0.005, local))
-      // brighter sky reflections on the finished glass while the cradle works it
-      wp.env = lerp(1, 1.5, smoothstep(W_SUPPORT[0] - 0.02, W_SUPPORT[0] + 0.03, local) * (1 - smoothstep(W_SUPPORT[1], STATS_IN + 0.02, local)))
+      // brighter sky reflections on the finished glass while the cradle works it (env also scales the
+      // curtain wall's horizon/glint terms: past ~1.2 the panes wash out and lose their contrast)
+      wp.env = lerp(1, 1.2, smoothstep(W_SUPPORT[0] - 0.02, W_SUPPORT[0] + 0.03, local) * (1 - smoothstep(W_SUPPORT[1], STATS_IN + 0.02, local)))
       const level = Math.floor(gy / FLOOR_H) + 1
-      const ct2 = `BMU cradle · L${level} · Curtain wall care`
-      if (cCradle.label.textContent !== ct2) cCradle.label.textContent = ct2
+      if (level !== cradleLevel) {
+        cradleLevel = level
+        cCradle.label.textContent = `BMU cradle · L${level} · Curtain wall care`
+      }
       annotate(cCradle, ctx, tmp2.set(gx, gy + 2.2, gz), supportVis)
 
       // ---------------------------------------------------------------- RESULTS
-      const statsVis = [0, 1, 2].map(i => smoothstep(STATS_IN + i * 0.018, STATS_IN + 0.03 + i * 0.018, local) * (1 - smoothstep(0.935, 0.965, local)))
-      rings.forEach((r, i) => {
-        const v = statsVis[i]
-        r.visible = v > 0.01
-        ;(r.material as THREE.LineBasicMaterial).opacity = v * 0.9
-      })
-      const pts: DatumPoint[] = DATUM_FLOORS.map(f => {
+      for (let i = 0; i < 3; i++) {
+        statsVis[i] = smoothstep(STATS_IN + i * 0.018, STATS_IN + 0.03 + i * 0.018, local) * (1 - smoothstep(0.935, 0.965, local))
+        const r = rings[i]
+        r.visible = statsVis[i] > 0.01
+        ;(r.material as THREE.LineBasicMaterial).opacity = statsVis[i] * 0.9
+      }
+      for (let i = 0; i < DATUM_FLOORS.length; i++) {
         // the tower's left silhouette corner at that level
-        let best: { x: number; y: number; ok: boolean } | null = null
-        for (const [sx, sz] of [
-          [1, 1],
-          [1, -1],
-          [-1, 1],
-          [-1, -1],
-        ]) {
-          const s = screen(ctx, tmp2.set(sx * (HALF + 1.4), f * FLOOR_H, sz * (HALF + 1.4)))
-          if (!best || s.x < best.x) best = s
+        const out = pts[i]
+        out.x = Infinity
+        out.ok = false
+        if (statsVis[i] <= 0.01) continue
+        const y = DATUM_FLOORS[i] * FLOOR_H
+        for (let c = 0; c < 4; c++) {
+          const s = screen(ctx, tmp2.set(CORNER_X[c] * (HALF + 1.4), y, CORNER_Z[c] * (HALF + 1.4)))
+          if (s.x < out.x) {
+            out.x = s.x
+            out.y = s.y
+            out.ok = s.ok
+          }
         }
-        return best!
-      })
+      }
       hud.datums(pts, statsVis)
 
       // ---------------------------------------------------------------- HUD
-      const B = beat(local, 4, STEP_A, STEP_B)
-      const fills = [0, 1, 2, 3].map(i => clamp((local - (STEP_A + i * SPAN)) / SPAN))
-      hud.update({
-        head: smoothstep(0.03, 0.06, local) * (1 - smoothstep(0.185, 0.205, local)),
-        headIn: local > 0.035 && local < 0.2,
-        plate: smoothstep(0.195, 0.22, local) * (1 - smoothstep(STEP_B - 0.005, STEP_B + 0.015, local)),
-        step: B.idx,
-        fills,
-        stats: statsVis,
-      })
+      for (let i = 0; i < 4; i++) fills[i] = clamp((local - (STEP_A + i * SPAN)) / SPAN)
+      hs.head = smoothstep(0.03, 0.06, local) * (1 - smoothstep(0.185, 0.205, local))
+      hs.plate = smoothstep(0.195, 0.22, local) * (1 - smoothstep(STEP_B - 0.005, STEP_B + 0.015, local))
+      hs.step = Math.min(3, Math.max(0, Math.floor((local - STEP_A) / SPAN)))
+      hud.update(hs)
 
       // post: bloom for the laser, sparks and warning lights; a warm film
       ctx.post.params.bloomStrength = 0.5 + 0.15 * beamOn

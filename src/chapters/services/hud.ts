@@ -37,7 +37,13 @@ export class Hud {
     this.intro = el('div', 'sv-intro', undefined, stage)
     el('p', 'hud-eyebrow', `${SECTIONS.services.eyebrow} · 01–${pad(COUNT)}`, this.intro)
     this.introTitle = rise(el('h2', 'hud-h2 sv-intro-title', undefined, this.intro), 'Eleven ways to be <em>heard.</em>')
-    el('p', 'hud-label sv-intro-sub', `Hoist car 1 · Levels ${levelOf(slabOf(0))}–${levelOf(slabOf(COUNT - 1))} · Fit-out`, this.intro)
+    // three unbreakable phrases, so a narrow phone wraps between them (never inside 'Fit-out')
+    const sub = el('p', 'hud-label sv-intro-sub', undefined, this.intro)
+    const phrases = ['Hoist car 1', `Levels ${levelOf(slabOf(0))}–${levelOf(slabOf(COUNT - 1))}`, 'Fit-out']
+    phrases.forEach((t, i) => {
+      el('span', 'sv-nowrap', t, sub)
+      if (i < phrases.length - 1) sub.append(' · ')
+    })
 
     this.card = el('div', 'sv-card hud-panel', undefined, stage)
     const head = el('p', 'hud-label sv-head', undefined, this.card)

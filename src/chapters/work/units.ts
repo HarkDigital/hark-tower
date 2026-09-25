@@ -66,53 +66,97 @@ export function frameGeometry(mobile: boolean): THREE.BufferGeometry {
 export interface ShotUniforms {
   uSheen: { value: number }
   uSky: { value: THREE.Color }
+  uGround: { value: THREE.Color }
   uGlint: { value: number }
 }
 
 /**
- * The vision glass: the screenshot seen through a pane of glass. A plain
- * MeshBasicMaterial (tone-mapped, colour 0.9 so it never blooms) with a thin
- * sky reflection that grows at grazing angles and a glint band that runs
- * across the pane as the unit turns on the cable.
+ * The vision glass: the screenshot seen through a pane of tinted glass. A
+ * plain MeshBasicMaterial (tone-mapped, colour 0.9 so it never blooms) that
+ * reads as glass rather than a screen:
+ *  - the site sits a little behind the glass, cool-tinted and shaded in from
+ *    the frame it is set into;
+ *  - the pane reflects the sky above the horizon and the ground below it,
+ *    along the real reflected view ray (so the reflection slides as the
+ *    camera moves), weak face-on and strong at grazing angles (Schlick);
+ *  - the reflected skyline breaks the horizon into building silhouettes;
+ *  - two soft diagonal streaks of sky light; uGlint slides them across as the
+ *    unit turns on the cable or is set.
+ * Kept faint face-on so the client's site stays legible.
  */
 export function shotMaterial(map: THREE.Texture): { mat: THREE.MeshBasicMaterial; u: ShotUniforms } {
   const mat = new THREE.MeshBasicMaterial({ map, color: new THREE.Color(0.9, 0.9, 0.9), toneMapped: true })
   const u: ShotUniforms = {
     uSheen: { value: 1 },
     uSky: { value: new THREE.Color('#9fbad6') },
+    uGround: { value: new THREE.Color('#5d554c') },
     uGlint: { value: -1 },
   }
   mat.onBeforeCompile = sh => {
     sh.uniforms.uSheen = u.uSheen
     sh.uniforms.uSky = u.uSky
+    sh.uniforms.uGround = u.uGround
     sh.uniforms.uGlint = u.uGlint
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying float vFres;')
+      .replace('#include <common>', '#include <common>\nvarying vec3 vReflW;\nvarying float vCosV;')
       .replace(
         '#include <project_vertex>',
         `#include <project_vertex>
-        vec3 fN = normalize(normalMatrix * normal);
-        vec3 fV = normalize(-mvPosition.xyz);
-        float fd = 1.0 - clamp(abs(dot(fN, fV)), 0.0, 1.0);
-        vFres = fd * fd;`,
+        vec4 gW = modelMatrix * vec4(transformed, 1.0);
+        vec3 gN = normalize(mat3(modelMatrix) * normal);
+        vec3 gI = normalize(gW.xyz - cameraPosition);
+        vReflW = reflect(gI, gN);
+        vCosV = clamp(abs(dot(gN, gI)), 0.0, 1.0);`,
       )
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uSheen;\nuniform vec3 uSky;\nuniform float uGlint;\nvarying float vFres;')
+      .replace(
+        '#include <common>',
+        '#include <common>\nuniform float uSheen;\nuniform vec3 uSky;\nuniform vec3 uGround;\nuniform float uGlint;\nvarying vec3 vReflW;\nvarying float vCosV;',
+      )
       .replace(
         '#include <map_fragment>',
         `#include <map_fragment>
         #ifdef USE_MAP
-          float gx = vMapUv.x * 0.8 + vMapUv.y * 0.45 - uGlint;
-          float glint = exp(-gx * gx * 70.0);
+          vec2 gUv = vMapUv;
         #else
-          float glint = 0.0;
+          vec2 gUv = vec2(0.5);
         #endif
-        float refl = uSheen * (0.04 + 0.55 * vFres);
-        diffuseColor.rgb = mix(diffuseColor.rgb, uSky, refl) + uSky * glint * 0.16 * uSheen;`,
+        // behind the glass: a cool tint, shaded in from the deep frame
+        vec2 gE = min(gUv, 1.0 - gUv);
+        float gIn = smoothstep(0.0, 0.028, gE.x) * smoothstep(0.0, 0.04, gE.y);
+        diffuseColor.rgb *= vec3(0.88, 0.93, 0.96) * mix(0.55, 1.0, gIn);
+        // on the glass: the reflected sky / skyline / ground along the reflected ray
+        vec3 gR = normalize(vReflW);
+        vec3 gHz = mix(uSky, vec3(1.0, 0.96, 0.9), 0.45);
+        vec3 gRef = mix(gHz, uSky * 0.8, smoothstep(0.0, 0.55, gR.y));
+        float gAz = atan(gR.x, gR.z + 1e-4);
+        float gCell = floor(gAz * 14.0);
+        float gTop = 0.02 + 0.13 * fract(sin(gCell * 91.7 + 3.1) * 43758.5);
+        float gBld = 1.0 - smoothstep(gTop - 0.006, gTop, gR.y);
+        gRef = mix(gRef, mix(uGround, gHz, 0.35), gBld * 0.75);
+        gRef = mix(gRef, uGround * 0.85, 1.0 - smoothstep(-0.3, -0.02, gR.y));
+        float gF = 0.05 + 0.95 * pow(1.0 - vCosV, 5.0);
+        float gK = uSheen * clamp(0.11 + 0.9 * gF, 0.0, 0.72);
+        float gx = gUv.x * 0.8 + gUv.y * 0.45 - uGlint;
+        float gx2 = gx + 0.3;
+        float gStreak = exp(-gx * gx * 60.0) + 0.5 * exp(-gx2 * gx2 * 300.0);
+        diffuseColor.rgb = mix(diffuseColor.rgb, gRef, gK) + gHz * gStreak * 0.13 * uSheen;`,
       )
   }
-  mat.customProgramCacheKey = () => 'tower-work-shot'
+  mat.customProgramCacheKey = () => 'tower-work-glass'
   return { mat, u }
+}
+
+/**
+ * Unit frames: clear-anodised aluminium (a unitised system's extrusions),
+ * a shade lighter than the tower's graphite mullions so a freshly set unit
+ * reads as a framed pane of glass, not a black-bezelled screen. Same program
+ * as MAT.mullion (a plain MeshStandardMaterial), so it adds no compile.
+ */
+let frameMat: THREE.MeshStandardMaterial | null = null
+export function unitFrameMaterial(): THREE.MeshStandardMaterial {
+  frameMat ??= new THREE.MeshStandardMaterial({ color: '#737d86', metalness: 0.85, roughness: 0.3 })
+  return frameMat
 }
 
 export interface Unit {
@@ -124,7 +168,7 @@ export interface Unit {
 
 export function buildUnit(frameGeo: THREE.BufferGeometry, map: THREE.Texture, mobile: boolean): Unit {
   const root = new THREE.Group()
-  const frame = new THREE.Mesh(frameGeo, MAT.mullion())
+  const frame = new THREE.Mesh(frameGeo, unitFrameMaterial())
   frame.castShadow = !mobile
   frame.receiveShadow = !mobile
   root.add(frame)
@@ -135,6 +179,132 @@ export function buildUnit(frameGeo: THREE.BufferGeometry, map: THREE.Texture, mo
   shot.castShadow = !mobile
   root.add(shot)
   return { root, shot, shotMat: mat, u }
+}
+
+/**
+ * A designed stand-in for a client's screenshot, for browsers that cannot
+ * decode the WebP (Safari 14–15 on macOS 10.15): a dark display panel with
+ * the unit tag, the industry, the client's name set large, a signal-green
+ * rule and the address — legible through the glass. 1.6:1 like the
+ * screenshots, so it fills the vision glass exactly.
+ */
+export async function paneFallbackTexture(o: { name: string; industry: string; host: string; tag: string; preview: boolean }): Promise<THREE.Texture> {
+  const DISPLAY = '"Big Shoulders Display Variable", "Archivo Variable", "Arial Narrow", sans-serif'
+  const MONO = '"IBM Plex Mono", ui-monospace, Menlo, monospace'
+  try {
+    await Promise.all([document.fonts?.load(`700 120px ${DISPLAY}`), document.fonts?.load(`500 24px ${MONO}`)])
+  } catch {
+    /* draw with the fallbacks */
+  }
+  const W = 960
+  const H = 600
+  const c = document.createElement('canvas')
+  c.width = W
+  c.height = H
+  const x = c.getContext('2d')!
+  // panel: a deep blue-graphite field with a faint drawing grid
+  const bg = x.createLinearGradient(0, 0, W, H)
+  bg.addColorStop(0, '#1a2632')
+  bg.addColorStop(1, '#0b1117')
+  x.fillStyle = bg
+  x.fillRect(0, 0, W, H)
+  x.lineWidth = 1
+  for (let gx = 0; gx <= W; gx += 40) {
+    x.strokeStyle = gx % 200 === 0 ? 'rgba(126, 192, 255, 0.1)' : 'rgba(126, 192, 255, 0.045)'
+    x.beginPath()
+    x.moveTo(gx + 0.5, 0)
+    x.lineTo(gx + 0.5, H)
+    x.stroke()
+  }
+  for (let gy = 0; gy <= H; gy += 40) {
+    x.strokeStyle = gy % 200 === 0 ? 'rgba(126, 192, 255, 0.1)' : 'rgba(126, 192, 255, 0.045)'
+    x.beginPath()
+    x.moveTo(0, gy + 0.5)
+    x.lineTo(W, gy + 0.5)
+    x.stroke()
+  }
+  // letter-spaced mono (canvas letterSpacing is too new for the browsers this is for)
+  const measure = (s: string, track: number) => {
+    let w = -track
+    for (const ch of s) w += x.measureText(ch).width + track
+    return w
+  }
+  const spaced = (s: string, px: number, py: number, track: number, align: 'left' | 'right' = 'left') => {
+    const w = measure(s, track)
+    let cx = align === 'right' ? px - w : px
+    for (const ch of s) {
+      x.fillText(ch, cx, py)
+      cx += x.measureText(ch).width + track
+    }
+    return w
+  }
+  const L = 72
+  x.textBaseline = 'alphabetic'
+  // head: the unit tag on a yellow chip, the status at the right
+  x.font = `500 22px ${MONO}`
+  const tagW = measure(o.tag.toUpperCase(), 3)
+  x.fillStyle = '#f2b705'
+  x.fillRect(L, 64, tagW + 24, 38)
+  x.fillStyle = '#0e1114'
+  spaced(o.tag.toUpperCase(), L + 12, 91, 3)
+  if (o.preview) {
+    x.font = `500 20px ${MONO}`
+    x.strokeStyle = '#00ff85'
+    x.lineWidth = 2
+    const pw = measure('PREVIEW', 3)
+    x.strokeRect(W - L - pw - 24, 65, pw + 24, 36)
+    x.fillStyle = '#00ff85'
+    spaced('PREVIEW', W - L - 12, 90, 3, 'right')
+  }
+  // the name set as large as fits (two lines at most), the industry above it
+  const name = o.name.toUpperCase()
+  const maxW = W - 2 * L
+  let size = 132
+  let lines = [name]
+  const fits = (ls: string[]) => ls.every(l => x.measureText(l).width <= maxW)
+  for (; size >= 64; size -= 4) {
+    x.font = `700 ${size}px ${DISPLAY}`
+    if (fits([name])) {
+      lines = [name]
+      break
+    }
+    // the most even two-line break that fits
+    const words = name.split(' ')
+    const uneven = (p: string[]) => Math.abs(x.measureText(p[0]).width - x.measureText(p[1]).width)
+    let best: string[] | null = null
+    for (let i = 1; i < words.length; i++) {
+      const pair = [words.slice(0, i).join(' '), words.slice(i).join(' ')]
+      if (fits(pair) && (!best || uneven(pair) < uneven(best))) best = pair
+    }
+    if (best && size <= 116) {
+      lines = best
+      break
+    }
+  }
+  const lh = size * 0.9
+  // centre the block (industry, name, rule, address) in the space under the head
+  const block = 24 + 24 + size * 0.78 + (lines.length - 1) * lh + 34 + 6 + 52
+  const top = Math.max(128, 128 + (H - 40 - 128 - block) / 2)
+  x.font = `500 24px ${MONO}`
+  x.fillStyle = '#9fb3c4'
+  spaced(o.industry.toUpperCase(), L, top + 24, 4)
+  x.font = `700 ${size}px ${DISPLAY}`
+  x.fillStyle = '#f4f1ea'
+  let base = top + 48 + size * 0.78
+  lines.forEach((l, i) => {
+    if (i) base += lh
+    x.fillText(l, L - 2, base)
+  })
+  // a signal-green rule, then the address
+  const ry = base + 34
+  x.fillStyle = '#00ff85'
+  x.fillRect(L, ry, 120, 6)
+  x.font = `500 24px ${MONO}`
+  x.fillStyle = '#c9d3db'
+  spaced(o.host, L, ry + 58, 2)
+  const t = new THREE.CanvasTexture(c)
+  t.colorSpace = THREE.SRGBColorSpace
+  return t
 }
 
 /**

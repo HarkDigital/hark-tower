@@ -19,11 +19,17 @@ export const DATUM_FLOORS = [57, 50, 43]
 
 const SHEETS = ['A-501', 'A-502', 'A-503', 'A-504']
 
+/**
+ * Each panel reveals as a unit: its words hoist in as soon as the panel starts
+ * to show and stay in until the panel has faded out, so a half-faded plate
+ * always carries its text (never an empty plate, never words without one).
+ */
+const TEXT_ON = 0.03
+
 const ELEV = `<svg class="pr-elmark" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 8V1.6A6.4 6.4 0 0 1 14.4 8Z M8 8v6.4A6.4 6.4 0 0 1 1.6 8Z" fill="currentColor"/></svg>`
 
 export interface HudState {
   head: number
-  headIn: boolean
   plate: number
   step: number
   /** per-step erection fill 0..1 */
@@ -51,7 +57,10 @@ export class ProcessHud {
   private svg: SVGSVGElement
   private paths: SVGPathElement[] = []
   private nodes: SVGPathElement[] = []
-  private last = ''
+  /** last written leader geometry per datum (half-px / 1e-3 quantised): skip DOM writes when still */
+  private leaderKey = [0, 1, 2].map(() => ({ px: NaN, py: NaN, ax: NaN, ay: NaN }))
+  private leaderVis = [-1, -1, -1]
+  private last = -1
   /** measured anchor of each stat plate's datum row (stage px) */
   private anchors: { x: number; y: number }[] = []
   portrait = false
@@ -163,8 +172,14 @@ export class ProcessHud {
     this.headVis = s.head
     reveal(this.head, s.head)
     reveal(this.plate, s.plate)
-    reveal(this.statsBox, Math.max(...s.stats), 0)
-    s.stats.forEach((v, i) => reveal(this.statEls[i].box, v, this.portrait || this.short ? 0 : 12))
+    let statsMax = 0
+    const dy = this.portrait || this.short ? 0 : 12
+    for (let i = 0; i < this.statEls.length; i++) {
+      const v = s.stats[i]
+      if (v > statsMax) statsMax = v
+      reveal(this.statEls[i].box, v, dy)
+    }
+    reveal(this.statsBox, statsMax, 0)
     for (let i = 0; i < 4; i++) {
       const v = Math.round(s.fills[i] * 400) / 400
       if (v !== this.barVals[i]) {
@@ -172,20 +187,27 @@ export class ProcessHud {
         this.bars[i].style.transform = `scaleX(${v})`
       }
     }
-    const key = `${+s.headIn}${+(s.plate > 0.5)}${s.step}${s.stats.map(v => +(v > 0.5)).join('')}${s.fills.map(f => +(f >= 1)).join('')}`
+    // a bitmask of every text/class state (no per-frame strings)
+    const headIn = s.head > TEXT_ON
+    const plateIn = s.plate > TEXT_ON
+    let key = (+headIn) | (+plateIn << 1) | (s.step << 2)
+    for (let i = 0; i < this.statEls.length; i++) if (s.stats[i] > TEXT_ON) key |= 1 << (4 + i)
+    for (let i = 0; i < 4; i++) if (s.fills[i] >= 1) key |= 1 << (8 + i)
     if (key === this.last) return
     this.last = key
-    setRise(this.title, s.headIn)
-    this.cards.forEach((c, i) => {
-      const on = s.plate > 0.5 && s.step === i
-      c.card.classList.toggle('is-in', on)
+    setRise(this.title, headIn)
+    for (let i = 0; i < this.cards.length; i++) {
+      const c = this.cards[i]
+      const on = plateIn && s.step === i
+      if (c.card.classList.contains('is-in') !== on) c.card.classList.toggle('is-in', on)
       setRise(c.name, on)
-    })
-    this.segs.forEach((g, i) => {
+    }
+    for (let i = 0; i < this.segs.length; i++) {
+      const g = this.segs[i]
       g.classList.toggle('is-active', s.step === i)
       g.classList.toggle('is-done', s.fills[i] >= 1)
-    })
-    this.statEls.forEach((r, i) => setRise(r.v, s.stats[i] > 0.5))
+    }
+    for (let i = 0; i < this.statEls.length; i++) setRise(this.statEls[i].v, s.stats[i] > TEXT_ON)
   }
 
   /** Per-frame datum leaders from each plate to its level on the tower (landscape only). */
@@ -197,19 +219,34 @@ export class ProcessHud {
       const path = this.paths[i]
       const node = this.nodes[i]
       if (v <= 0.01 || !Number.isFinite(p.x + p.y + a.x + a.y) || p.x < a.x + 60) {
-        path.style.opacity = '0'
-        node.style.opacity = '0'
+        if (this.leaderVis[i] !== 0) {
+          this.leaderVis[i] = 0
+          path.style.opacity = '0'
+          node.style.opacity = '0'
+        }
         continue
       }
       const x0 = a.x + 10
-      const elbow = Math.max(x0 + 20, p.x - Math.min(90, (p.x - x0) * 0.3))
-      path.setAttribute('d', `M${x0.toFixed(1)},${a.y.toFixed(1)} H${elbow.toFixed(1)} L${p.x.toFixed(1)},${p.y.toFixed(1)}`)
-      // an elevation triangle sitting on the datum
-      const t = 6
-      node.setAttribute('d', `M${(p.x - t).toFixed(1)},${(p.y - t * 1.5).toFixed(1)} H${(p.x + t).toFixed(1)} L${p.x.toFixed(1)},${p.y.toFixed(1)} Z`)
-      path.style.opacity = v.toFixed(3)
-      node.style.opacity = v.toFixed(3)
-      path.style.strokeDashoffset = `${((1 - v) * 600).toFixed(1)}`
+      const px = Math.round(p.x * 2) / 2
+      const py = Math.round(p.y * 2) / 2
+      const k = this.leaderKey[i]
+      if (k.px !== px || k.py !== py || k.ax !== x0 || k.ay !== a.y) {
+        k.px = px
+        k.py = py
+        k.ax = x0
+        k.ay = a.y
+        const elbow = Math.max(x0 + 20, px - Math.min(90, (px - x0) * 0.3))
+        path.setAttribute('d', `M${x0.toFixed(1)},${a.y.toFixed(1)} H${elbow.toFixed(1)} L${px},${py}`)
+        // an elevation triangle sitting on the datum
+        const t = 6
+        node.setAttribute('d', `M${px - t},${py - t * 1.5} H${px + t} L${px},${py} Z`)
+      }
+      const vq = Math.round(v * 1000) / 1000
+      if (vq === this.leaderVis[i]) continue
+      this.leaderVis[i] = vq
+      path.style.opacity = String(vq)
+      node.style.opacity = String(vq)
+      path.style.strokeDashoffset = String(Math.round((1 - vq) * 6000) / 10)
     }
   }
 }

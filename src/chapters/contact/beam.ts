@@ -6,10 +6,13 @@ import { MAT, mergeAll } from '../../kit/steel'
  * THE LAST BEAM — the topping-out tradition, built to the tower's scale.
  *
  * A W36 girder (0.9 m deep, 6 m long: exactly one bay) painted white and
- * covered in the crew's signatures (procedural ink scribbles — no names), a
- * hand-lettered SAY HELLO. and the address, a small evergreen zip-tied to the
- * top flange, and a flag on a clamp pole. It hangs from the crane hook on a
- * two-leg sling bridle, with two tag lines trailing from its ends.
+ * covered in the crew's signatures (procedural ink scribbles — no names), the
+ * building's name and the milestone hand-lettered in the clear panel (HARK
+ * TOWER · TOPPED OUT · LEVEL 60), a small evergreen zip-tied to the top
+ * flange, and a small flag on a clamp pole at the far end (both part of the
+ * ironworkers' custom; the flag kept small and muted so it never competes
+ * with the signal green). It hangs from the crane hook on a two-leg sling
+ * bridle, with two tag lines trailing from its ends.
  *
  *   load            origin = the beam's centre (index.ts places + swings it)
  *   HANG            metres from the beam's centre up to the crane's hook point
@@ -159,30 +162,31 @@ function paintFace(g: CanvasRenderingContext2D, W: number, H: number, oy: number
   }
   g.globalAlpha = 1
   if (front) {
-    // hand-lettered with a paint marker: SAY HELLO. + the address, and a signal-green underline
+    // hand-lettered with a paint marker: the building's name, a signal-green
+    // underline, and the milestone (never the page's headline again)
     const cx = W * 0.5
     g.save()
     g.translate(cx, H * 0.4)
     g.rotate(-0.022)
     g.textAlign = 'center'
     g.textBaseline = 'middle'
-    g.font = `850 ${Math.round(H * 0.5)}px 'Big Shoulders Display Variable', 'Archivo Variable', sans-serif`
+    g.font = `850 ${Math.round(H * 0.48)}px 'Big Shoulders Display Variable', 'Archivo Variable', sans-serif`
     g.fillStyle = '#121212'
     // a marker never lays down one perfect stroke: a few passes, slightly off
     for (let k = 0; k < 4; k++) {
       g.globalAlpha = k === 0 ? 1 : 0.35
-      g.fillText('SAY HELLO.', (r() - 0.5) * 2.2, (r() - 0.5) * 2.2)
+      g.fillText('HARK TOWER', (r() - 0.5) * 2.2, (r() - 0.5) * 2.2)
     }
     g.globalAlpha = 1
     g.restore()
     g.save()
-    g.translate(cx + 6, H * 0.82)
+    g.translate(cx + 6, H * 0.83)
     g.rotate(-0.012)
     g.textAlign = 'center'
     g.textBaseline = 'middle'
-    g.font = `500 ${Math.round(H * 0.19)}px 'IBM Plex Mono', ui-monospace, monospace`
+    g.font = `500 ${Math.round(H * 0.15)}px 'IBM Plex Mono', ui-monospace, monospace`
     g.fillStyle = '#1d2b5c'
-    g.fillText('mike@hark.digital', 0, 0)
+    g.fillText('TOPPED OUT · LEVEL 60', 0, 0)
     g.restore()
     g.strokeStyle = '#00a857'
     g.lineWidth = 5
@@ -197,12 +201,13 @@ function paintFace(g: CanvasRenderingContext2D, W: number, H: number, oy: number
     g.font = `700 ${Math.round(H * 0.3)}px 'Big Shoulders Display Variable', sans-serif`
     g.fillStyle = '#141414'
     g.globalAlpha = 0.9
-    g.fillText('TOPPING OUT · LEVEL 60', W * 0.5, H * 0.5)
+    g.fillText('HARK TOWER · TOPPED OUT', W * 0.5, H * 0.5)
     g.globalAlpha = 1
   }
   g.restore()
 }
 
+/** A small, weathered flag (muted: it's sun-faded cloth at dusk, not a logo). */
 function flagTexture() {
   const cv = document.createElement('canvas')
   cv.width = 380
@@ -211,14 +216,14 @@ function flagTexture() {
   const W = cv.width
   const H = cv.height
   for (let i = 0; i < 13; i++) {
-    g.fillStyle = i % 2 ? '#f4f1ea' : '#b22234'
+    g.fillStyle = i % 2 ? '#e6e1d6' : '#8c3a3f'
     g.fillRect(0, (i * H) / 13, W, H / 13 + 1)
   }
   const cw = W * 0.4
   const ch = (H * 7) / 13
-  g.fillStyle = '#3c3b6e'
+  g.fillStyle = '#343856'
   g.fillRect(0, 0, cw, ch)
-  g.fillStyle = '#f4f1ea'
+  g.fillStyle = '#e6e1d6'
   for (let row = 0; row < 9; row++) {
     const n = row % 2 ? 5 : 6
     for (let k = 0; k < n; k++) {
@@ -370,15 +375,17 @@ export function buildBeam(renderer: THREE.WebGLRenderer, mobile: boolean): LastB
   fir.castShadow = shadows
   load.add(fir)
 
-  // ---- the flag on a clamp pole
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.026, 2.5, 8), MAT.steel())
-  pole.position.set(2.35, BEAM_D / 2 + 1.25, 0)
+  // ---- a small flag on a clamp pole, at the far end of the beam
+  const POLE_X = 2.62
+  const POLE_H = 1.7
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.024, POLE_H, 8), MAT.steel())
+  pole.position.set(POLE_X, BEAM_D / 2 + POLE_H / 2, 0)
   load.add(pole)
   const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, BEAM_W + 0.04), MAT.rubber())
-  clamp.position.set(2.35, BEAM_D / 2 + 0.06, 0)
+  clamp.position.set(POLE_X, BEAM_D / 2 + 0.06, 0)
   load.add(clamp)
   const flagU = { uTime: { value: 0 }, uAmt: { value: 1 } }
-  const flagMat = new THREE.MeshStandardMaterial({ map: flagTexture(), side: THREE.DoubleSide, roughness: 0.8, metalness: 0 })
+  const flagMat = new THREE.MeshStandardMaterial({ map: flagTexture(), side: THREE.DoubleSide, roughness: 0.9, metalness: 0 })
   flagMat.onBeforeCompile = shader => {
     shader.uniforms.uTime = flagU.uTime
     shader.uniforms.uAmt = flagU.uAmt
@@ -389,15 +396,17 @@ export function buildBeam(renderer: THREE.WebGLRenderer, mobile: boolean): LastB
         `#include <begin_vertex>
         // pinned at the pole (uv.x = 0), rippling toward the fly end
         float fu = uv.x;
-        float wv = sin(fu * 7.0 - uTime * 5.2 + uv.y * 1.6) * 0.11 + sin(fu * 13.0 - uTime * 8.3) * 0.03;
+        float wv = sin(fu * 7.0 - uTime * 5.2 + uv.y * 1.6) * 0.075 + sin(fu * 13.0 - uTime * 8.3) * 0.02;
         transformed.z += wv * fu * uAmt;
         transformed.y -= fu * fu * 0.06 * (1.2 - uAmt * 0.4);`,
       )
   }
   flagMat.customProgramCacheKey = () => 'tower-flag'
-  const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.63, 16, 4), flagMat)
-  flag.geometry.translate(0.6, 0, 0)
-  flag.position.set(2.37, BEAM_D / 2 + 2.12, 0)
+  // (flies inward, over the beam: the pole stands at its outer end)
+  const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.76, 0.4, 16, 4), flagMat)
+  flag.geometry.translate(0.38, 0, 0)
+  flag.rotation.y = Math.PI
+  flag.position.set(POLE_X - 0.02, BEAM_D / 2 + POLE_H - 0.22, 0)
   flag.castShadow = shadows
   load.add(flag)
 

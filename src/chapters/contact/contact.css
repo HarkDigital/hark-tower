@@ -429,7 +429,25 @@
     display: none;
   }
 }
-@media (max-width: 340px) {
+/* the narrowest phones: the address shrinks a step, and if the pair still
+   doesn't fit on one row, Copy wraps below it (never a clipped address) */
+@media (max-width: 360px) {
+  .stage-contact .ct-cta {
+    flex-wrap: wrap;
+  }
+  .stage-contact .ct-mail {
+    font-size: 14px;
+    padding: 14px 10px;
+    gap: 8px;
+  }
+  .stage-contact .ct-copy {
+    flex: 1 0 auto;
+    padding: 14px 10px;
+  }
+  .stage-contact .ct-mail-addr {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
   .stage-contact .ct-ico {
     display: none;
   }

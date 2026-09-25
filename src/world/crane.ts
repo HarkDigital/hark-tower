@@ -36,6 +36,8 @@ const CJIB_L = 16
 /** height of the jib's bottom chords above the slewing ring */
 const JIB_Y = 1.2
 const G = 9.81
+const WARN = new THREE.Color('#ff2a1a')
+const CAB = new THREE.Color('#ffd9a0')
 
 function boardTexture() {
   const c = document.createElement('canvas')
@@ -329,8 +331,8 @@ export class Crane {
     // warning lights: faint by day, bright at dusk/night, a slow blink (steady when calm)
     const ph = (time % 1.5) / 1.5
     const pulse = calm ? 1 : 0.12 + 0.88 * (THREE.MathUtils.smoothstep(ph, 0, 0.08) * (1 - THREE.MathUtils.smoothstep(ph, 0.45, 0.6)))
-    this.warn.color.set('#ff2a1a').multiplyScalar(0.5 + night * 5.5 * pulse)
-    this.cabLight.color.set('#ffd9a0').multiplyScalar(0.05 + night * 1.2)
+    this.warn.color.copy(WARN).multiplyScalar(0.5 + night * 5.5 * pulse)
+    this.cabLight.color.copy(CAB).multiplyScalar(0.05 + night * 1.2)
 
     this.hook.updateWorldMatrix(true, false)
     this.hookWorld.setFromMatrixPosition(this.hook.matrixWorld)

@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { MAT, T, latticeGeometry, mergeAll } from '../../kit/steel'
+import { forInstances, instancedDepth } from './mats'
 
 /*
  * THE CONSTRUCTION HOIST — a rack-and-pinion car on a lattice mast, tied
@@ -59,6 +60,8 @@ export class Hoist {
   private ties: THREE.InstancedMesh
   private leaves: THREE.InstancedMesh
   private beaconMat: THREE.MeshBasicMaterial
+  /** the beacon's lamp colour, parsed once (scaled into beaconMat each frame) */
+  private beaconBase = new THREE.Color(T.safety)
   private m = new THREE.Matrix4()
   private lastSections = -1
   private lastTies = -1
@@ -67,8 +70,11 @@ export class Hoist {
   private lastGates = new Float32Array(GATE_SLABS).fill(-1)
 
   constructor(mobile: boolean, yOf: (slab: number) => number) {
+    // plain meshes (the car) share the kit's materials; the instanced parts get their own copies
     const steel = MAT.steel()
     const yellow = MAT.craneYellow()
+    const steelI = forInstances(steel)
+    const yellowI = forInstances(yellow)
     const shadows = !mobile
 
     // ---- mast (instanced sections) + wall ties
@@ -78,9 +84,10 @@ export class Hoist {
       // section flanges
       box(MAST.size + 0.08, 0.05, MAST.size + 0.08, 0, 0.025, 0),
     ])
-    this.mast = new THREE.InstancedMesh(sec, steel, MAX_SECTIONS)
+    this.mast = new THREE.InstancedMesh(sec, steelI, MAX_SECTIONS)
     this.mast.count = 0
     this.mast.castShadow = shadows
+    this.mast.customDepthMaterial = instancedDepth()
     this.mast.frustumCulled = false
     this.root.add(this.mast)
 
@@ -91,7 +98,7 @@ export class Hoist {
       box(0.07, 0.4, 0.9, -MAST.size / 2 - tieLen + 0.035, 0, 0),
       box(0.12, 0.12, 0.7, -MAST.size / 2 - 0.06, 0, 0),
     ])
-    this.ties = new THREE.InstancedMesh(tie, yellow, MAX_TIES)
+    this.ties = new THREE.InstancedMesh(tie, yellowI, MAX_TIES)
     this.ties.count = 0
     this.ties.frustumCulled = false
     this.root.add(this.ties)
@@ -200,8 +207,8 @@ export class Hoist {
     }
     const carKick = new THREE.Mesh(mergeGeometries(kick), new THREE.MeshStandardMaterial({ map: haz, roughness: 0.7 }))
 
-    // the beacon (blinks at idle)
-    this.beaconMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(T.safety).multiplyScalar(3), toneMapped: false })
+    // the beacon (flashes while the car runs, steady when it is docked)
+    this.beaconMat = new THREE.MeshBasicMaterial({ color: this.beaconBase.clone().multiplyScalar(3), toneMapped: false })
     const beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.18, 12), this.beaconMat)
     beacon.position.set(hx - 0.25, h + 0.17, -hz + 0.35)
 
@@ -225,9 +232,9 @@ export class Hoist {
     for (let i = 0; i < 12; i++) leaf.push(box(0.03, 1.92, 0.03, 0.27, 1.06, -1.32 + (i * 2.64) / 11))
     for (const y of [0.1, 1.06, 2.02]) leaf.push(box(0.045, 0.045, 2.8, 0.27, y, 0))
 
-    const frames = new THREE.InstancedMesh(mergeAll(gy), yellow, GATE_SLABS)
-    const decks = new THREE.InstancedMesh(mergeAll(gg), steel, GATE_SLABS)
-    this.leaves = new THREE.InstancedMesh(mergeAll(leaf), yellow, GATE_SLABS)
+    const frames = new THREE.InstancedMesh(mergeAll(gy), yellowI, GATE_SLABS)
+    const decks = new THREE.InstancedMesh(mergeAll(gg), steelI, GATE_SLABS)
+    this.leaves = new THREE.InstancedMesh(mergeAll(leaf), yellowI, GATE_SLABS)
     for (let i = 0; i < GATE_SLABS; i++) {
       this.m.makeTranslation(FACE, yOf(i + 1), CAR.cz)
       frames.setMatrixAt(i, this.m)
@@ -249,8 +256,9 @@ export class Hoist {
   /**
    * Pose the hoist: the car at y (m), the mast up to mastTop (m), landings
    * on slabs 1..landings, ties on every second floor below the mast top.
+   * running: 0..1 how fast the car is travelling (the beacon flashes only then).
    */
-  update(carY: number, mastTop: number, landings: number, time: number, reducedMotion: boolean) {
+  update(carY: number, mastTop: number, landings: number, time: number, reducedMotion: boolean, running = 0) {
     this.car.position.set(CAR.cx, carY, CAR.cz)
     const sections = Math.min(MAX_SECTIONS, Math.ceil(mastTop / MAST.section))
     if (sections !== this.lastSections) {
@@ -290,8 +298,11 @@ export class Hoist {
       dirty = true
     }
     if (dirty) this.leaves.instanceMatrix.needsUpdate = true
-    // beacon: a slow rotating-lamp pulse (steady when motion is reduced)
-    const pulse = reducedMotion ? 0.7 : 0.25 + 0.75 * Math.pow(Math.max(0, Math.sin(time * 4.2)), 6)
-    this.beaconMat.color.set(T.safety).multiplyScalar(0.6 + 3.4 * pulse)
+    // beacon: a slow rotating-lamp pulse while the car runs (under 1 flash/s),
+    // settling to a steady glow when it docks or when motion is reduced
+    const run = reducedMotion ? 0 : Math.min(1, running * 4)
+    const flash = 0.25 + 0.75 * Math.pow(Math.max(0, Math.sin(time * 4.2)), 6)
+    const pulse = 0.7 + (flash - 0.7) * run
+    this.beaconMat.color.copy(this.beaconBase).multiplyScalar(0.6 + 3.4 * pulse)
   }
 }

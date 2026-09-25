@@ -236,7 +236,17 @@ export class City {
             return mix(mix(gHash(i), gHash(i + vec2(1.0, 0.0)), u.x), mix(gHash(i + vec2(0.0, 1.0)), gHash(i + vec2(1.0, 1.0)), u.x), u.y);
           }
           float gFbm(vec2 p) { return gNoise(p) * 0.55 + gNoise(p * 2.3 + 5.1) * 0.3 + gNoise(p * 5.7 + 1.7) * 0.15; }
-          float gBand(float d, float w) { float fw = max(fwidth(d), 1e-3); return 1.0 - smoothstep(w - fw, w + fw, d); }`,
+          float gBand(float d, float w) { float fw = max(fwidth(d), 1e-3); return 1.0 - smoothstep(w - fw, w + fw, d); }
+          // a pair of tyre ruts (2.1 m gauge) along a circular arc: centre c, radius r,
+          // angles a0..a1 (fading in and out at the ends); tread = along-track position
+          float gRut(vec2 p, vec2 c, float r, float a0, float a1, out float tread) {
+            vec2 d = p - c;
+            float ang = atan(d.y, d.x);
+            float inArc = smoothstep(a0, a0 + 0.12, ang) * (1.0 - smoothstep(a1 - 0.12, a1, ang));
+            float off = length(d) - r;
+            tread = ang * r;
+            return max(gBand(abs(off - 1.05), 0.27), gBand(abs(off + 1.05), 0.27)) * inArc;
+          }`,
         )
         .replace(
           '#include <color_fragment>',
@@ -273,21 +283,52 @@ export class City {
             float path = max(gBand(abs(pc.x - pc.y * 0.4), 1.4), gBand(abs(length(pc) - 30.0), 1.4));
             lawn = mix(lawn, vec3(0.52, 0.49, 0.44), path);
             col = mix(col, lawn, plaza);
-            // the site: packed earth, gravel patches, haul road from the gate, tyre tracks, puddles
+            // the site: packed earth (drier and damper patches), a speckle of
+            // gravel, the haul roads, rutted tyre tracks with tread, puddles lying
+            // in the ruts and the low spots (they mirror the sky)
             float n1 = gFbm(p * 0.09);
             float n2 = gFbm(p * 0.6 + 3.0);
-            vec3 earth = mix(vec3(0.4, 0.33, 0.26), vec3(0.5, 0.44, 0.36), n1);
-            earth = mix(earth, vec3(0.53, 0.52, 0.49), smoothstep(0.55, 0.7, gFbm(p * 0.05 + 9.0)) * 0.8);
-            earth *= 0.88 + 0.2 * n2;
+            vec3 earth = mix(vec3(0.34, 0.28, 0.22), vec3(0.5, 0.44, 0.36), n1);
+            earth = mix(earth, vec3(0.56, 0.53, 0.48), smoothstep(0.55, 0.7, gFbm(p * 0.05 + 9.0)) * 0.75);
+            earth = mix(earth, earth * 0.72, smoothstep(0.58, 0.72, gFbm(p * 0.07 + 31.0)) * 0.8);
+            earth *= 0.86 + 0.24 * n2;
             float road = max(step(abs(p.x - 22.0), 5.5) * step(18.0, p.y), step(max(abs(p.x), abs(p.y)), 25.0) * step(19.0, max(abs(p.x), abs(p.y))));
             vec3 gravel = vec3(0.47, 0.46, 0.43) * (0.85 + 0.3 * n2);
             earth = mix(earth, gravel, road);
-            float track = road * max(gBand(abs(abs(p.x - 22.0) - 1.9), 0.35), 0.0) * step(26.0, p.y);
-            earth *= 1.0 - 0.25 * track;
-            float wet = smoothstep(0.66, 0.72, gFbm(p * 0.11 + 17.0)) * (0.4 + 0.6 * road);
-            earth = mix(earth, earth * 0.45, wet);
+            // stones: fine speckle, fading out with distance before it can shimmer
+            vec2 sp = p * 6.0;
+            float grDet = 1.0 - smoothstep(0.3, 0.9, length(fwidth(sp)));
+            vec2 sCell = floor(sp);
+            float st = gHash(sCell);
+            vec2 sAt = vec2(gHash(sCell + 1.3), gHash(sCell + 5.7)) * 0.5 + 0.25;
+            float sR = 0.1 + 0.22 * gHash(sCell + 9.1);
+            float stoneA = step(0.62 - 0.25 * road, st) * (1.0 - smoothstep(sR * 0.6, sR, length(fract(sp) - sAt)));
+            earth *= mix(1.0, mix(0.8, 1.2, gHash(sCell + 7.0)), stoneA * grDet);
+            // tyre ruts: from the gate round to the west laydown, round the
+            // tower on the haul road, a turning circle by the mixer, and out east
+            float tr0; float tr1; float tr2; float tr3;
+            float rut = gRut(p, vec2(-12.0, 62.0), 34.0, -2.3, 0.1, tr0);
+            float rutB = gRut(p, vec2(-58.0, 8.0), 40.0, -0.9, 0.62, tr1);
+            float rutC = gRut(p, vec2(12.0, 42.0), 8.5, -3.14, 3.14, tr2);
+            float rutD = gRut(p, vec2(70.0, 50.0), 48.0, -3.2, -1.95, tr3);
+            float ring = max(gBand(abs(max(abs(p.x), abs(p.y)) - 20.9), 0.27), gBand(abs(max(abs(p.x), abs(p.y)) - 23.1), 0.27));
+            float tread = tr0 * step(0.5, rut) + tr1 * step(0.5, rutB) + tr2 * step(0.5, rutC) + tr3 * step(0.5, rutD) + (abs(p.x) > abs(p.y) ? p.y : p.x) * step(0.5, ring);
+            // (broken up along their length: pressed in here, scuffed out there)
+            float ruts = max(max(max(rut, rutB), max(rutC, rutD)), ring * 0.7) * (0.35 + 0.65 * smoothstep(0.3, 0.62, gFbm(p * 0.21 + 13.0)));
+            float treadDet = 1.0 - smoothstep(0.2, 0.6, fwidth(tread / 0.32));
+            float lug = mix(1.0, 0.75 + 0.25 * step(0.5, fract(tread / 0.32)), treadDet);
+            earth *= 1.0 - ruts * (0.17 * lug + 0.04);
+            // puddles: in the ruts where they dip, and in the low spots
+            float lowN = gFbm(p * 0.11 + 17.0);
+            float rutN = gFbm(p * 0.35 + 4.0);
+            float lowSpot = smoothstep(0.64, 0.7, lowN) * (0.35 + 0.65 * road);
+            float inRut = ruts * smoothstep(0.52, 0.6, rutN);
+            float wet = max(lowSpot, inRut);
+            float damp = max(smoothstep(0.58, 0.66, lowN) * (0.35 + 0.65 * road), ruts * smoothstep(0.44, 0.52, rutN));
+            earth = mix(earth, earth * 0.7, damp);
+            earth = mix(earth, earth * 0.28, wet);
             col = mix(col, earth, site);
-            gRough = mix(gRough, 0.12, wet * site);
+            gRough = mix(gRough, mix(0.82, 0.04, wet), max(damp, ruts * 0.5) * site);
             // street lights along every street (both kerbs, every 24 m), at night
             vec2 lp = abs(fract((p + 12.0) / 24.0) - 0.5) * 24.0;
             float kerb = alongX > 0.5 ? abs(cl - 6.0) : abs(cl - 6.0);
@@ -314,7 +355,7 @@ export class City {
           totalEmissiveRadiance += gEmit;`,
         )
     }
-    gmat.customProgramCacheKey = () => 'city-ground-2'
+    gmat.customProgramCacheKey = () => 'city-ground-3'
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(5600, 5600), gmat)
     ground.rotation.x = -Math.PI / 2
     ground.receiveShadow = !mobile

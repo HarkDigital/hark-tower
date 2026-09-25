@@ -74,7 +74,11 @@ export function bayOrigin(face: number, bay: number, floor: number, out: THREE.V
 interface Layout {
   /** x: litAt (floor + order), y: seed, z: 1 = tenant, w: light level */
   a: [number, number, number, number]
-  /** figures: x, depth (negative), type (0 none, 1 standing, 2 seated), scale */
+  /**
+   * figures: x, depth (negative), type, scale (negative = mirrored: profiles face −x).
+   * Types: 0 none, 1 standing, 2 seated at a desk, 3 walking (profile),
+   * 4 standing (profile), 5 seated (profile).
+   */
   f0: [number, number, number, number]
   f1: [number, number, number, number]
   f2: [number, number, number, number]
@@ -86,22 +90,22 @@ const NONE: [number, number, number, number] = [0, -3, 0, 1]
 
 /** hand-placed interiors for the eight tenants (the camera stops at these) */
 const TENANT_LAYOUTS: Omit<Layout, 'a'>[] = [
-  // Fabbri Builders: at the desk, a colleague standing by the glass with the plans
-  { f0: [-0.9, -2.9, 2, 1], f1: [1.35, -1.25, 1, 1.02], f2: NONE, d: [-0.55, -1.9, 1.05, 2.3] },
+  // Fabbri Builders: at the desk, a colleague by the glass turned to them with the plans
+  { f0: [-0.9, -2.9, 2, 1], f1: [1.35, -1.25, 4, -1.02], f2: NONE, d: [-0.55, -1.9, 1.05, 2.3] },
   // Shriver's: two people talking mid-room, a plant by the glass
-  { f0: [0.35, -3.4, 1, 0.97], f1: [1.05, -3.1, 1, 1.03], f2: NONE, d: [0, -6.2, 1.2, -2.25] },
+  { f0: [0.3, -3.35, 4, 0.97], f1: [1.08, -3.15, 4, -1.03], f2: NONE, d: [0, -6.2, 1.2, -2.25] },
   // CrossFit Off The Grid: standing at the window, a desk further back
   { f0: [-0.6, -0.95, 1, 1.04], f1: [1.2, -4.8, 2, 1], f2: NONE, d: [1.55, -3.8, 0.9, 99] },
-  // Bellview Winery: a pair at a meeting table
-  { f0: [-0.75, -3.5, 2, 0.98], f1: [0.85, -3.5, 2, 1.02], f2: NONE, d: [0.05, -2.3, 1.45, -2.3] },
+  // Bellview Winery: at the meeting table, one at its head
+  { f0: [-0.6, -3.5, 2, 0.98], f1: [1.95, -2.75, 5, -1.02], f2: NONE, d: [0.05, -2.3, 1.45, -2.3] },
   // PEG Glass: looking out at the city, the studio desk behind
   { f0: [0.9, -0.9, 1, 1], f1: [-1.3, -4.6, 2, 0.98], f2: NONE, d: [-1.0, -3.6, 0.95, 99] },
   // Our Lady of Mercy Academy: presenting, one listening at the table
-  { f0: [-1.35, -5.2, 1, 1.02], f1: [0.7, -2.9, 2, 0.98], f2: NONE, d: [0.95, -1.9, 1.05, 99] },
+  { f0: [-1.35, -5.2, 4, 1.02], f1: [0.7, -2.9, 2, 0.98], f2: NONE, d: [0.95, -1.9, 1.05, 99] },
   // The Home Hero: heads down at the desk, a plant
   { f0: [0.2, -2.8, 2, 1.02], f1: NONE, f2: NONE, d: [0.55, -1.8, 1.1, -2.3] },
   // ProviderSoft: a team at their desks, one walking through
-  { f0: [-1.25, -3.0, 2, 1], f1: [1.15, -3.0, 2, 0.97], f2: [0.05, -5.6, 1, 1.03], d: [0, -1.95, 1.9, 99] },
+  { f0: [-1.25, -3.0, 2, 1], f1: [1.15, -3.0, 2, 0.97], f2: [0.05, -5.6, 3, -1.03], d: [0, -1.95, 1.9, 99] },
 ]
 
 function genericLayout(r: () => number): Omit<Layout, 'a'> {
@@ -113,8 +117,20 @@ function genericLayout(r: () => number): Omit<Layout, 'a'> {
   const n = r() < 0.28 ? 0 : r() < 0.72 ? 1 : 2
   for (let k = 0; k < n; k++) {
     const seated = hasDesk && k === 0 && r() < 0.6
-    if (seated) figs.push([d[0] + (r() - 0.5) * d[2], d[1] - 1.0, 2, 0.95 + r() * 0.1])
-    else figs.push([(r() - 0.5) * 4.2, -1.1 - r() * 5.5, 1, 0.94 + r() * 0.12])
+    const s = 0.95 + r() * 0.1
+    if (seated) {
+      // behind the desk facing the glass, or side-on at its end
+      if (r() < 0.62) figs.push([d[0] + (r() - 0.5) * d[2], d[1] - 1.0, 2, s])
+      else {
+        const side = r() < 0.5 ? -1 : 1
+        figs.push([d[0] + side * (d[2] + 0.38), d[1] - 0.4, 5, -side * s])
+      }
+    } else {
+      // standing (facing us or side-on) or walking through
+      const p = r()
+      const type = p < 0.3 ? 1 : p < 0.62 ? 4 : 3
+      figs.push([(r() - 0.5) * 4.2, -1.1 - r() * 5.5, type, (r() < 0.5 ? -1 : 1) * s])
+    }
   }
   while (figs.length < 3) figs.push(NONE)
   return { f0: figs[0], f1: figs[1], f2: figs[2], d }
@@ -178,46 +194,231 @@ const FRAG_HEAD = /* glsl */ `
     float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
     return length(pa - ba * h) - r;
   }
-  float ofSmin(float a, float b, float k) {
-    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
-    return mix(b, a, h) - k * h * (1.0 - h);
+  float ofCro(vec2 a, vec2 b) { return a.x * b.y - a.y * b.x; }
+  // a round-ended cone from a (radius ra) to b (radius rb): limbs that taper (iq)
+  float ofUCap(vec2 p, vec2 a, vec2 b, float ra, float rb) {
+    p -= a;
+    b -= a;
+    float h = dot(b, b);
+    vec2 q = vec2(dot(p, vec2(b.y, -b.x)), dot(p, b)) / h;
+    q.x = abs(q.x);
+    float bb = ra - rb;
+    vec2 c = vec2(sqrt(max(h - bb * bb, 1e-6)), bb);
+    float k = ofCro(c, q);
+    if (k < 0.0) return sqrt(h * dot(q, q)) - ra;
+    if (k > c.x) return sqrt(h * (dot(q, q) + 1.0 - 2.0 * q.y)) - rb;
+    return dot(c, q) - ra;
   }
-  // a standing person, feet at y = 0, ~1.76 m (front view, no face — a silhouette)
-  float ofStand(vec2 p) {
-    float head = length((p - vec2(0.0, 1.64)) * vec2(1.0, 0.92)) - 0.108;
-    float torso = ofCap(p, vec2(0.0, 1.04), vec2(0.0, 1.33), 0.19);
-    float neck = ofCap(p, vec2(0.0, 1.4), vec2(0.0, 1.54), 0.055);
-    float arms = min(ofCap(p, vec2(-0.215, 1.34), vec2(-0.26, 0.84), 0.056), ofCap(p, vec2(0.215, 1.34), vec2(0.25, 0.84), 0.056));
-    float legs = min(ofCap(p, vec2(-0.09, 0.95), vec2(-0.1, 0.05), 0.078), ofCap(p, vec2(0.09, 0.95), vec2(0.105, 0.05), 0.078));
-    float d = ofSmin(torso, neck, 0.06);
-    d = ofSmin(d, arms, 0.04);
-    d = ofSmin(d, legs, 0.07);
-    return min(d, head);
+  // a two-segment limb: a → b → c with radii ra, rb, rc
+  float ofLimb(vec2 p, vec2 a, vec2 b, vec2 c, float ra, float rb, float rc) {
+    return min(ofUCap(p, a, b, ra, rb), ofUCap(p, b, c, rb, rc));
   }
-  // seated at a desk (chair back behind), seat ~0.47 m
-  float ofSeat(vec2 p) {
-    float head = length((p - vec2(0.0, 1.26)) * vec2(1.0, 0.92)) - 0.106;
-    float torso = ofCap(p, vec2(0.0, 0.66), vec2(0.0, 0.95), 0.19);
-    float neck = ofCap(p, vec2(0.0, 1.0), vec2(0.0, 1.15), 0.055);
-    float arms = min(ofCap(p, vec2(-0.215, 0.97), vec2(-0.29, 0.74), 0.054), ofCap(p, vec2(0.215, 0.97), vec2(0.29, 0.74), 0.054));
-    float chair = ofBox(p - vec2(0.0, 0.8), vec2(0.25, 0.32)) - 0.04;
-    float base = ofCap(p, vec2(0.0, 0.04), vec2(0.0, 0.46), 0.035);
-    float d = ofSmin(torso, neck, 0.06);
-    d = ofSmin(d, arms, 0.04);
-    d = min(d, head);
-    return min(d, min(chair, base));
+  // a trapezoid (half widths r1 bottom, r2 top, half height he) (iq)
+  float ofTrap(vec2 p, float r1, float r2, float he) {
+    vec2 k1 = vec2(r2, he);
+    vec2 k2 = vec2(r2 - r1, 2.0 * he);
+    p.x = abs(p.x);
+    vec2 ca = vec2(p.x - min(p.x, (p.y < 0.0) ? r1 : r2), abs(p.y) - he);
+    vec2 cb = p - k1 + k2 * clamp(dot(k1 - p, k2) / dot(k2, k2), 0.0, 1.0);
+    float s = (cb.x < 0.0 && ca.y < 0.0) ? -1.0 : 1.0;
+    return s * sqrt(min(dot(ca, ca), dot(cb, cb)));
   }
-  // a fiddle-leaf fig in a planter
-  float ofPlant(vec2 p) {
-    float pot = ofBox(p - vec2(0.0, 0.22), vec2(0.2, 0.22)) - 0.01;
-    float stem = ofCap(p, vec2(0.0, 0.4), vec2(0.03, 1.2), 0.025);
-    float l = length((p - vec2(-0.2, 1.05)) * vec2(1.0, 1.5)) - 0.17;
-    l = min(l, length((p - vec2(0.22, 1.2)) * vec2(1.0, 1.4)) - 0.16);
-    l = min(l, length((p - vec2(-0.08, 1.5)) * vec2(1.0, 1.3)) - 0.19);
-    l = min(l, length((p - vec2(0.18, 1.62)) * vec2(1.0, 1.5)) - 0.14);
-    l = min(l, length((p - vec2(-0.26, 1.34)) * vec2(1.0, 1.6)) - 0.12);
-    l = min(l, length((p - vec2(0.05, 1.86)) * vec2(1.0, 1.4)) - 0.12);
-    return min(min(pot, stem), l);
+  float ofEll(vec2 p, vec2 c, vec2 r) { return (length((p - c) / r) - 1.0) * min(r.x, r.y); }
+
+  /*
+   * People, seen through the glass. Feet at y = 0, metres; the profile poses
+   * face +x. Each pose writes four layers, back to front (d.x: chair and
+   * shoes, d.y: trousers/skirt, d.z: shirt/jacket, d.w: skin), plus hair.
+   */
+  void ofStandF(vec2 p, float v, inout vec4 d, inout float hair) {
+    vec2 m = vec2(abs(p.x), p.y);
+    vec2 hc = vec2(0.0, 1.635);
+    float head = ofEll(p, hc, vec2(0.092, 0.114));
+    d.w = min(d.w, min(head, ofCap(p, vec2(0.0, 1.46), vec2(0.0, 1.54), 0.042)));
+    // facing us: a hairline; facing into the room: the back of the head
+    float line = v > 0.62 ? hc.y - 0.07 : hc.y + 0.035;
+    hair = min(hair, max(head - 0.012, line - p.y));
+    d.z = min(d.z, ofTrap(p - vec2(0.0, 1.17), 0.148, 0.182, 0.2) - 0.03);
+    if (v < 0.36) {
+      // arms at the sides
+      d.z = min(d.z, ofLimb(m, vec2(0.19, 1.34), vec2(0.228, 1.08), vec2(0.218, 0.86), 0.05, 0.042, 0.034));
+      d.w = min(d.w, length(m - vec2(0.216, 0.815)) - 0.04);
+    } else if (v < 0.72) {
+      // a phone or a coffee in one hand
+      d.z = min(d.z, ofLimb(p, vec2(-0.19, 1.34), vec2(-0.228, 1.08), vec2(-0.218, 0.86), 0.05, 0.042, 0.034));
+      d.w = min(d.w, length(p - vec2(-0.216, 0.815)) - 0.04);
+      d.z = min(d.z, ofLimb(p, vec2(0.19, 1.34), vec2(0.225, 1.07), vec2(0.13, 1.19), 0.05, 0.042, 0.034));
+      d.w = min(d.w, length(p - vec2(0.105, 1.21)) - 0.04);
+    } else {
+      // hands in pockets
+      d.z = min(d.z, ofLimb(m, vec2(0.19, 1.34), vec2(0.238, 1.1), vec2(0.17, 0.95), 0.05, 0.043, 0.036));
+    }
+    if (fract(v * 7.3) < 0.3) {
+      // a skirt, dark tights
+      d.y = min(d.y, ofTrap(p - vec2(0.0, 0.775), 0.205, 0.148, 0.2) - 0.012);
+      d.x = min(d.x, ofLimb(m, vec2(0.075, 0.62), vec2(0.078, 0.36), vec2(0.075, 0.07), 0.046, 0.037, 0.03));
+    } else {
+      d.y = min(d.y, ofTrap(p - vec2(0.0, 0.9), 0.155, 0.15, 0.09) - 0.02);
+      d.y = min(d.y, ofLimb(m, vec2(0.085, 0.95), vec2(0.09, 0.52), vec2(0.088, 0.09), 0.078, 0.056, 0.043));
+    }
+    d.x = min(d.x, ofCap(m, vec2(0.085, 0.035), vec2(0.1, 0.035), 0.036));
+  }
+
+  void ofSeatF(vec2 p, float v, inout vec4 d, inout float hair) {
+    vec2 m = vec2(abs(p.x), p.y);
+    vec2 hc = vec2(0.0, 1.215);
+    float head = ofEll(p, hc, vec2(0.092, 0.114));
+    d.w = min(d.w, min(head, ofCap(p, vec2(0.0, 1.04), vec2(0.0, 1.12), 0.042)));
+    hair = min(hair, max(head - 0.012, (v > 0.5 ? hc.y - 0.07 : hc.y + 0.035) - p.y));
+    d.z = min(d.z, ofTrap(p - vec2(0.0, 0.755), 0.15, 0.18, 0.19) - 0.03);
+    // forearms reach forward to the keyboard
+    d.z = min(d.z, ofLimb(m, vec2(0.188, 0.92), vec2(0.235, 0.7), vec2(0.17, 0.72), 0.05, 0.042, 0.036));
+    d.w = min(d.w, length(m - vec2(0.148, 0.728)) - 0.038);
+    // knees toward us, shins down
+    d.y = min(d.y, ofCap(m, vec2(0.1, 0.5), vec2(0.11, 0.46), 0.078));
+    d.y = min(d.y, ofUCap(m, vec2(0.115, 0.45), vec2(0.118, 0.08), 0.05, 0.04));
+    d.x = min(d.x, ofCap(m, vec2(0.11, 0.035), vec2(0.12, 0.035), 0.036));
+    // the task chair: mesh back, seat, gas lift, five-star base
+    float chair = ofBox(p - vec2(0.0, 0.87), vec2(0.17, 0.235)) - 0.05;
+    chair = min(chair, ofBox(p - vec2(0.0, 0.45), vec2(0.23, 0.028)) - 0.012);
+    chair = min(chair, ofCap(p, vec2(0.0, 0.08), vec2(0.0, 0.43), 0.022));
+    chair = min(chair, ofCap(p, vec2(-0.27, 0.05), vec2(0.27, 0.05), 0.02));
+    d.x = min(d.x, chair);
+  }
+
+  void ofWalk(vec2 p, float v, inout vec4 d, inout float hair) {
+    vec2 hc = vec2(0.035, 1.625);
+    float head = ofEll(p, hc, vec2(0.1, 0.114));
+    d.w = min(d.w, min(head, ofCap(p, vec2(0.0, 1.45), vec2(0.02, 1.53), 0.044)));
+    hair = min(hair, max(head - 0.012, -dot(p - hc, vec2(-0.55, 0.835)) - 0.012));
+    d.z = min(d.z, ofUCap(p, vec2(0.022, 1.33), vec2(0.0, 1.03), 0.12, 0.108));
+    // arms swing against the stride
+    d.z = min(d.z, ofLimb(p, vec2(0.012, 1.33), vec2(-0.07, 1.09), vec2(-0.14, 0.885), 0.048, 0.04, 0.033));
+    d.w = min(d.w, length(p - vec2(-0.152, 0.85)) - 0.039);
+    d.z = min(d.z, ofLimb(p, vec2(0.02, 1.33), vec2(0.09, 1.1), vec2(0.185, 0.93), 0.046, 0.039, 0.032));
+    d.w = min(d.w, length(p - vec2(0.2, 0.905)) - 0.037);
+    // the stride: front heel down, back foot rolling off the toe
+    d.y = min(d.y, length(p - vec2(0.0, 0.965)) - 0.105);
+    d.y = min(d.y, ofLimb(p, vec2(0.0, 0.96), vec2(0.13, 0.55), vec2(0.19, 0.095), 0.08, 0.056, 0.042));
+    d.y = min(d.y, ofLimb(p, vec2(0.0, 0.96), vec2(-0.06, 0.54), vec2(-0.2, 0.14), 0.078, 0.055, 0.041));
+    d.x = min(d.x, ofCap(p, vec2(0.165, 0.042), vec2(0.29, 0.05), 0.036));
+    d.x = min(d.x, ofCap(p, vec2(-0.25, 0.1), vec2(-0.14, 0.038), 0.033));
+  }
+
+  void ofStandP(vec2 p, float v, inout vec4 d, inout float hair) {
+    vec2 hc = vec2(0.025, 1.635);
+    float head = ofEll(p, hc, vec2(0.1, 0.114));
+    d.w = min(d.w, min(head, ofCap(p, vec2(0.0, 1.46), vec2(0.015, 1.54), 0.044)));
+    hair = min(hair, max(head - 0.012, -dot(p - hc, vec2(-0.55, 0.835)) - 0.012));
+    d.z = min(d.z, ofUCap(p, vec2(0.012, 1.33), vec2(0.0, 1.03), 0.12, 0.108));
+    if (v < 0.5) {
+      d.z = min(d.z, ofLimb(p, vec2(0.005, 1.33), vec2(-0.008, 1.075), vec2(0.045, 0.86), 0.048, 0.04, 0.033));
+      d.w = min(d.w, length(p - vec2(0.055, 0.825)) - 0.039);
+    } else {
+      // mid-conversation: a forearm up
+      d.z = min(d.z, ofLimb(p, vec2(0.005, 1.33), vec2(0.02, 1.08), vec2(0.2, 1.13), 0.048, 0.04, 0.033));
+      d.w = min(d.w, length(p - vec2(0.232, 1.14)) - 0.038);
+    }
+    d.y = min(d.y, length(p - vec2(0.0, 0.965)) - 0.1);
+    d.y = min(d.y, ofLimb(p, vec2(-0.01, 0.96), vec2(-0.02, 0.53), vec2(-0.04, 0.09), 0.076, 0.054, 0.041));
+    d.y = min(d.y, ofLimb(p, vec2(0.01, 0.96), vec2(0.025, 0.53), vec2(0.0, 0.09), 0.078, 0.056, 0.042));
+    d.x = min(d.x, ofCap(p, vec2(-0.03, 0.04), vec2(0.13, 0.042), 0.036));
+  }
+
+  void ofSeatP(vec2 p, float v, inout vec4 d, inout float hair) {
+    vec2 hc = vec2(0.075, 1.21);
+    float head = ofEll(p, hc, vec2(0.1, 0.114));
+    d.w = min(d.w, min(head, ofCap(p, vec2(0.035, 1.04), vec2(0.055, 1.12), 0.044)));
+    hair = min(hair, max(head - 0.012, -dot(p - hc, vec2(-0.55, 0.835)) - 0.012));
+    d.z = min(d.z, ofUCap(p, vec2(0.035, 0.93), vec2(-0.02, 0.63), 0.12, 0.112));
+    d.z = min(d.z, ofLimb(p, vec2(0.025, 0.92), vec2(0.075, 0.69), vec2(0.33, 0.75), 0.047, 0.04, 0.033));
+    d.w = min(d.w, length(p - vec2(0.36, 0.755)) - 0.037);
+    d.y = min(d.y, ofUCap(p, vec2(-0.02, 0.53), vec2(0.4, 0.52), 0.092, 0.062));
+    d.y = min(d.y, ofUCap(p, vec2(0.405, 0.5), vec2(0.425, 0.09), 0.055, 0.041));
+    d.x = min(d.x, ofCap(p, vec2(0.405, 0.042), vec2(0.53, 0.045), 0.034));
+    float chair = ofBox(p - vec2(-0.19, 0.87), vec2(0.03, 0.235)) - 0.03;
+    chair = min(chair, ofBox(p - vec2(0.02, 0.44), vec2(0.23, 0.028)) - 0.012);
+    chair = min(chair, ofCap(p, vec2(0.02, 0.08), vec2(0.02, 0.42), 0.022));
+    chair = min(chair, ofCap(p, vec2(-0.25, 0.05), vec2(0.29, 0.05), 0.02));
+    d.x = min(d.x, chair);
+  }
+
+  // clothes, skin and hair from a figure's seed (linear albedo, muted office wear)
+  vec3 ofTopC(float h) {
+    h *= 8.0;
+    if (h < 1.0) return vec3(0.6, 0.6, 0.58);    // white shirt
+    if (h < 2.0) return vec3(0.28, 0.36, 0.46);  // pale blue
+    if (h < 3.0) return vec3(0.03, 0.04, 0.075); // navy
+    if (h < 4.0) return vec3(0.055, 0.055, 0.06);// charcoal
+    if (h < 5.0) return vec3(0.1, 0.17, 0.3);    // chambray
+    if (h < 6.0) return vec3(0.07, 0.1, 0.07);   // forest
+    if (h < 7.0) return vec3(0.2, 0.045, 0.05);  // burgundy
+    return vec3(0.2, 0.21, 0.22);                // mid-grey knit
+  }
+  vec3 ofBotC(float h) {
+    h *= 6.0;
+    if (h < 1.0) return vec3(0.028, 0.035, 0.065); // navy
+    if (h < 2.0) return vec3(0.045, 0.045, 0.05);  // charcoal
+    if (h < 3.0) return vec3(0.02);                // black
+    if (h < 4.0) return vec3(0.26, 0.21, 0.13);    // khaki
+    if (h < 5.0) return vec3(0.05, 0.08, 0.15);    // denim
+    return vec3(0.14, 0.14, 0.14);                 // grey
+  }
+  vec3 ofSkinC(float h) {
+    return mix(mix(vec3(0.6, 0.4, 0.3), vec3(0.34, 0.19, 0.11), clamp(h * 2.0, 0.0, 1.0)), vec3(0.1, 0.055, 0.035), clamp(h * 2.0 - 1.0, 0.0, 1.0));
+  }
+  vec3 ofHairC(float h) {
+    if (h < 0.55) return vec3(0.022, 0.017, 0.014);
+    if (h < 0.8) return vec3(0.09, 0.05, 0.028);
+    if (h < 0.92) return vec3(0.34, 0.24, 0.12);
+    return vec3(0.26, 0.26, 0.25);
+  }
+
+  // a pointed leaf from a to b, widest ~45% along
+  float ofLeaf(vec2 p, vec2 a, vec2 b, float w) {
+    vec2 m = mix(a, b, 0.45);
+    return min(ofUCap(p, a, m, 0.006, w), ofUCap(p, m, b, w, 0.004));
+  }
+  // a planter by the glass: a snake plant or a fiddle-leaf fig.
+  // x: pot, y: leaves, z: trunk, w: the nearest leaf's shade
+  vec4 ofPlant(vec2 p, float ps) {
+    float potW = 0.15 + 0.05 * ofHash(ps + 1.3);
+    float potH = 0.32 + 0.12 * ofHash(ps + 2.9);
+    float pot = ofTrap(p - vec2(0.0, potH * 0.5), potW * 0.8, potW, potH * 0.5) - 0.01;
+    float leaf = 1e3;
+    float stem = 1e3;
+    float shade = 1.0;
+    if (ofHash(ps) < 0.45) {
+      // stiff blades fanned out of the pot
+      for (int i = 0; i < 9; i++) {
+        float fi = float(i);
+        float u = fi / 8.0 - 0.5;
+        float hh = ofHash(ps + fi * 3.7);
+        vec2 b = vec2(u * potW * 1.2, potH - 0.03);
+        float len = (0.5 + 0.5 * hh) * (1.0 - 0.55 * abs(u));
+        vec2 tip = b + normalize(vec2(u * 0.7 + (hh - 0.5) * 0.18, 1.0)) * len;
+        float dl = ofUCap(p, b, tip, 0.03, 0.003);
+        if (dl < leaf) { leaf = dl; shade = 0.75 + 0.5 * hh; }
+      }
+    } else {
+      // a slim trunk, broad leaves up its top two-thirds
+      float top = potH + 0.8 + 0.4 * ofHash(ps + 4.1);
+      stem = ofUCap(p, vec2(0.0, potH - 0.03), vec2(0.025, top - 0.06), 0.02, 0.011);
+      for (int i = 0; i < 12; i++) {
+        float fi = float(i);
+        float k = fi / 11.0;
+        float hh = ofHash(ps + fi * 5.1);
+        float s = mod(fi, 2.0) < 0.5 ? 1.0 : -1.0;
+        float ang = mix(-0.45, 0.55, hh) + k * 0.6;
+        float len = mix(0.19, 0.28, ofHash(ps + fi * 2.3)) * (1.0 - 0.3 * k);
+        vec2 b = vec2(0.02 * k, mix(potH + 0.38, top, k));
+        vec2 dir = vec2(s * cos(ang), sin(ang));
+        if (i == 11) dir = vec2(0.15, 1.0);
+        float dl = ofLeaf(p, b, b + dir * len, 0.3 * len);
+        if (dl < leaf) { leaf = dl; shade = 0.7 + 0.6 * hh; }
+      }
+    }
+    return vec4(pot, leaf, stem, shade);
   }
   // the city reflected in the glass, at infinity: a skyline profile along the
   // face's reflected azimuth (so it slides across the panes as the drone moves)
@@ -342,28 +543,78 @@ const FRAG_BODY = /* glsl */ `
           room = mix(room, sil * 1.4, a);
         }
       }
+      // People and plants are drawn on upright cards turned to face the
+      // camera (they're round things: a card square to the glass would thin
+      // to a sliver seen from an angle). Lit by the ceiling from above and by
+      // the daylight through the glass; a little of the room's light between
+      // them and the glass keeps them soft, like people behind tinted glazing.
+      vec3 camL = ro - vOfRay;
+      vec3 illumTop = lightC * 0.74 + vec3(0.17, 0.19, 0.21);
+      vec3 illumLow = lightC * 0.42 + vec3(0.17, 0.19, 0.21);
       // plant by the glass
       if (vOfD.w < 50.0) {
-        float tp = (-0.75 - ro.z) * inv.z;
+        vec2 F = vec2(vOfD.w, -0.75);
+        vec2 vd = normalize(F - camL.xz);
+        float den = dot(rdS.xz, vd);
+        float tp = den > 1e-3 ? dot(F - ro.xz, vd) / den : -1.0;
         if (tp > 0.0 && tp < t) {
-          vec2 pp = (ro + rdS * tp).xy - vec2(vOfD.w, 0.0);
-          float dp = ofPlant(pp);
-          float a = 1.0 - smoothstep(-sw, sw, dp);
-          if (a > 0.5) t = tp;
-          room = mix(room, vec3(0.02, 0.03, 0.022), a);
+          vec3 P = ro + rdS * tp;
+          vec2 pp = vec2(dot(P.xz - F, vec2(-vd.y, vd.x)), P.y);
+          if (abs(pp.x) < 0.62 && pp.y < 1.9) {
+            float fw = max(0.004, (tp + dist) * 0.0011) * 1.2;
+            vec4 pl = ofPlant(pp, seed * 5.37 + vOfD.w * 1.9);
+            float a = 1.0 - smoothstep(-fw, fw, min(pl.x, min(pl.y, pl.z)));
+            if (a > 0.002) {
+              float ph = ofHash(seed * 2.71 + vOfD.w);
+              vec3 potC = ph < 0.4 ? vec3(0.5, 0.5, 0.48) : (ph < 0.7 ? vec3(0.035) : vec3(0.3, 0.12, 0.06));
+              vec3 c = vec3(0.07, 0.05, 0.035);
+              c = mix(c, vec3(0.04, 0.085, 0.032) * pl.w * mix(0.75, 1.3, smoothstep(0.5, 1.7, pp.y)), 1.0 - smoothstep(-fw, fw, pl.y));
+              c = mix(c, potC, 1.0 - smoothstep(-fw, fw, pl.x));
+              c *= mix(illumLow, illumTop, smoothstep(0.1, 1.7, pp.y));
+              c = mix(c, room, 0.08);
+              if (a > 0.5) t = tp;
+              room = mix(room, c, a);
+            }
+          }
         }
       }
-      // people: silhouette cards facing the glass, with a thin backlit rim
+      // people: standing, talking, walking through, seated at their desks
       for (int k = 0; k < 3; k++) {
         vec4 f = k == 0 ? vOfF0 : (k == 1 ? vOfF1 : vOfF2);
         if (f.z < 0.5) continue;
-        float tc = (f.y - ro.z) * inv.z;
+        vec2 F = f.xy;
+        vec2 vd = normalize(F - camL.xz);
+        float den = dot(rdS.xz, vd);
+        if (den < 1e-3) continue;
+        float tc = dot(F - ro.xz, vd) / den;
         if (tc <= 0.0 || tc >= t) continue;
-        vec2 pf = ((ro + rdS * tc).xy - vec2(f.x, 0.0)) / f.w;
-        float dfig = f.z < 1.5 ? ofStand(pf) : ofSeat(pf);
-        float a = 1.0 - smoothstep(-sw, sw, dfig);
-        float rim = smoothstep(-0.03 - sw, -sw, dfig) * a;
-        vec3 c = sil + lightC * 0.3 * rim;
+        vec3 P = ro + rdS * tc;
+        float sc = abs(f.w);
+        // f.w < 0 mirrors the pose (profiles face −x)
+        vec2 pf = vec2(dot(P.xz - F, vec2(-vd.y, vd.x)) * sign(f.w), P.y) / sc;
+        if (pf.x < -0.46 || pf.x > 0.66 || pf.y < -0.05 || pf.y > 1.83) continue;
+        float fs = seed * 13.1 + float(k) * 7.3 + f.x * 3.7;
+        float v = ofHash(fs + 7.9);
+        vec4 dd = vec4(1e3);
+        float dh = 1e3;
+        if (f.z < 1.5) ofStandF(pf, v, dd, dh);
+        else if (f.z < 2.5) ofSeatF(pf, v, dd, dh);
+        else if (f.z < 3.5) ofWalk(pf, v, dd, dh);
+        else if (f.z < 4.5) ofStandP(pf, v, dd, dh);
+        else ofSeatP(pf, v, dd, dh);
+        // AA a touch soft: they're behind two layers of glass
+        float fw = max(0.004, (tc + dist) * 0.0011) * 1.3 / sc;
+        float dAll = min(min(min(dd.x, dd.y), min(dd.z, dd.w)), dh);
+        float a = 1.0 - smoothstep(-fw, fw, dAll);
+        if (a < 0.002) continue;
+        vec3 c = vec3(0.022, 0.021, 0.022);
+        c = mix(c, ofBotC(ofHash(fs + 1.7)), 1.0 - smoothstep(-fw, fw, dd.y));
+        c = mix(c, ofTopC(ofHash(fs)), 1.0 - smoothstep(-fw, fw, dd.z));
+        c = mix(c, ofSkinC(ofHash(fs + 3.1)), 1.0 - smoothstep(-fw, fw, dd.w));
+        c = mix(c, ofHairC(ofHash(fs + 5.3)), 1.0 - smoothstep(-fw, fw, dh));
+        // round, not cut out: a little darker toward the outline
+        c *= mix(illumLow, illumTop, smoothstep(0.1, 1.7, pf.y)) * mix(0.82, 1.0, smoothstep(0.0, 0.05, -dAll));
+        c = mix(c, room, 0.1);
         if (a > 0.5) t = tc;
         room = mix(room, c, a);
       }

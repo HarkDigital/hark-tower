@@ -22,9 +22,11 @@ import { bindScene, holdScene, releaseScene, sceneHeld } from './scene'
  *                 browsers without `inert`, focus returns to Menu)
  *   bottom-left   Sound: a plate with a status LED and a small live meter
  *                 (aria-pressed)
- *   bottom-right  the TITLE BLOCK: live elevation of the steel frontier
- *                 ("EL. +096.0 M", decorative), the level being erected
- *                 ("L24"), the sheet ("03 / 07 · Floors") and the plain
+ *   bottom-right  the TITLE BLOCK: a construction readout of the steel
+ *                 frontier (decorative): the level being erected ("Erecting ·
+ *                 STEEL L24", always worded as steel so it never reads as the
+ *                 level a chapter is showing) and the top of steel ("EL.
+ *                 +096.0 M"), then the sheet ("03 / 07 · Floors") and the plain
  *                 business name ("Services"), beside a construction PHASING
  *                 diagram: seven little elevations of the tower, one per
  *                 chapter, growing taller left to right. Phases already
@@ -66,10 +68,10 @@ function elevation(y: number) {
   const tenth = t % 10
   return `EL. +${pad(whole, 3)}.${tenth} M`
 }
-/** the level being erected: GL at grade, then L01..L60 */
+/** the steel level being erected: "STEEL GL" at grade, then "STEEL L01".."STEEL L60" */
 function level(y: number) {
-  if (y < 0.05) return 'GL'
-  return `L${pad(Math.max(1, Math.min(60, Math.ceil(y / 4 - 1e-3))))}`
+  if (y < 0.05) return 'STEEL GL'
+  return `STEEL L${pad(Math.max(1, Math.min(60, Math.ceil(y / 4 - 1e-3))))}`
 }
 
 export function createChrome(root: HTMLElement, engine: Engine, sound: Sound) {
@@ -144,8 +146,8 @@ export function createChrome(root: HTMLElement, engine: Engine, sound: Sound) {
       <button class="ch-sound ch-plate" type="button" data-sound-toggle aria-pressed="false">${soundInner}</button>
       <div class="ch-tb ch-plate">
         <div class="ch-cells" aria-hidden="true">
-          <p class="ch-cell ch-cell--el"><span class="ch-k">Elevation</span><span class="ch-v ch-el">EL. +000.0 M</span></p>
-          <p class="ch-cell ch-cell--lv"><span class="ch-k">Level</span><span class="ch-v ch-lv">GL</span></p>
+          <p class="ch-cell ch-cell--lv"><span class="ch-k">Erecting</span><span class="ch-v ch-lv">STEEL GL</span></p>
+          <p class="ch-cell ch-cell--el"><span class="ch-k">Top of steel</span><span class="ch-v ch-el">EL. +000.0 M</span></p>
           <p class="ch-cell ch-cell--sh"><span class="ch-k ch-sh-k"></span><span class="ch-v ch-sh-v"></span></p>
         </div>
         <nav class="ch-pips" aria-label="Chapters">

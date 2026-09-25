@@ -19,6 +19,7 @@ import {
   buildRig,
   buildUnit,
   frameGeometry,
+  paneFallbackTexture,
   rackGeometry,
   rackPose,
   slotMark,
@@ -36,7 +37,8 @@ import './work.css'
  * it over its slot — drawn on the facade in cyan as a blueprint opening —
  * sets it down and the fixers bolt it up (sparks, hot bolts). Installed units
  * stay: a column of client work climbing the face of the tower, two floors
- * apart, right under the steel being erected.
+ * apart, each set on top of the finished (reflective) curtain wall, which
+ * follows them up, right under the steel being erected.
  *
  *   0.000–0.080  intro: a site sign — "Built to be heard." — low on the ground
  *                by the stillage; unit 01 leaves the rack at 0.035
@@ -88,9 +90,13 @@ const overT = (k: number) => itemStart(k) + P_OVER * SPAN
 const landT = (k: number) => itemStart(k) + P_LAND * SPAN
 const freeT = (k: number) => itemStart(k) + P_FREE * SPAN
 
-/* the slots: one bay (x 3..9) of the +z face, every other floor from level 3 */
+/*
+ * the slots: one bay (x 3..9) of the +z face, every other floor from floor 2
+ * (Level 03). The curtain wall follows the units up (glazedAt): each unit is
+ * set on top of the finished glass, the open steel above it.
+ */
 const SLOT_X = 6
-const slotFloor = (k: number) => 3 + 2 * k
+const slotFloor = (k: number) => 2 + 2 * k
 const slotY = (k: number) => slotFloor(k) * FLOOR_H + FLOOR_H / 2
 /** the settled three-quarter view of each installed unit (yaw, pitch) */
 const REST_YAW = [0.3, 0.2, 0.36, 0.24, 0.34, 0.22]
@@ -142,6 +148,7 @@ const _u = new THREE.Vector3()
 const _q = new THREE.Quaternion()
 const _e = new THREE.Euler()
 const UP = new THREE.Vector3(0, 1, 0)
+const BOLT_HOT = new THREE.Color('#ff7a2a')
 const DEG = Math.PI / 180
 
 /** Move around the crane's mast: interpolate yaw + radius (a slew), y separately. */
@@ -205,6 +212,19 @@ function hookAt(l: number, out: THREE.Vector3) {
   return out
 }
 
+/**
+ * Floors of finished curtain wall at l: the glass reaches the floor under
+ * unit k's slot while unit k is hoisted, so every unit is set right on top of
+ * finished glass. Monotonic, 0 at the start (the hero's end) and slotFloor(5)
+ * = 12 at the end (= services' start: built 18 − 6).
+ */
+function glazedAt(l: number) {
+  for (let k = 0; k < NF; k++) {
+    if (l < landT(k)) return lerp(k === 0 ? 0 : slotFloor(k - 1), slotFloor(k), smoothstep(pickT(k), landT(k), l))
+  }
+  return slotFloor(NF - 1)
+}
+
 /** Swing on the cable while carrying unit k (0..1; 0 on the rack and once set). */
 function swingAmp(k: number, l: number) {
   const a = pickT(k)
@@ -252,6 +272,42 @@ function frameTo(out: Shot, C: THREE.Vector3, w: number, h: number, yaw: number,
   return out
 }
 
+/**
+ * Turn a camera standing at out.pos (yaw/pitch, no roll) so the point S lands
+ * on screen at (px, py) CSS px — a few Newton steps on the exact projection.
+ * Pitch is clamped to [minPitch, maxPitch] (frameTo's sign: > 0 looks down).
+ */
+function aimAt(out: Shot, S: THREE.Vector3, px: number, py: number, fov: number, W: number, H: number, minPitch: number, maxPitch: number) {
+  const aspect = W / Math.max(1, H)
+  const tanH = Math.tan((fov * DEG) / 2)
+  const nx = (px / W) * 2 - 1
+  const ny = 1 - (py / H) * 2
+  const rx = S.x - out.pos.x
+  const ry = S.y - out.pos.y
+  const rz = S.z - out.pos.z
+  let yaw = Math.atan2(-rx, -rz)
+  let pitch = -Math.atan2(ry, Math.hypot(rx, rz))
+  for (let i = 0; i < 5; i++) {
+    const cp = Math.cos(pitch)
+    const sp = Math.sin(pitch)
+    const cy = Math.cos(yaw)
+    const sy = Math.sin(yaw)
+    // forward d, right r = (cy, 0, -sy), up u = r × d
+    const dx = -sy * cp
+    const dy = -sp
+    const dz = -cy * cp
+    const f = Math.max(0.1, rx * dx + ry * dy + rz * dz)
+    const sx = (rx * cy - rz * sy) / (f * tanH * aspect)
+    const su = (rx * (sy * dy) + ry * (-sy * dx - cy * dz) + rz * (cy * dy)) / (f * tanH)
+    yaw -= Math.atan((sx - nx) * tanH * aspect)
+    pitch = clamp(pitch - Math.atan((su - ny) * tanH), minPitch, maxPitch)
+  }
+  _d.set(-Math.sin(yaw) * Math.cos(pitch), -Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch))
+  out.tgt.copy(out.pos).addScaledVector(_d, 48)
+  out.fov = fov
+  return out
+}
+
 function blendShot(out: Shot, a: Shot, b: Shot, t: number, pull = 0, lift = 0) {
   const e = ease.inOutCubic(clamp(t))
   out.pos.lerpVectors(a.pos, b.pos, e)
@@ -284,6 +340,7 @@ interface Layout {
   cardTop: number[]
   boardR: number
   boardTop: number
+  signR: number
 }
 
 interface Card {
@@ -353,7 +410,7 @@ class Work implements Chapter {
     this.group.add(this.rack)
     this.mark = slotMark()
     this.group.add(this.mark.lines)
-    this.boltMat = new THREE.MeshBasicMaterial({ color: new THREE.Color('#ff7a2a'), toneMapped: false })
+    this.boltMat = new THREE.MeshBasicMaterial({ color: BOLT_HOT.clone(), toneMapped: false })
     this.bolts = new THREE.Mesh(boltGeometry(), this.boltMat)
     this.bolts.visible = false
     this.group.add(this.bolts)
@@ -386,7 +443,24 @@ class Work implements Chapter {
           m.map = tex
           old?.dispose()
         })
-        .catch(err => console.warn(`[work] missing screenshot for ${FEATURED[k].id}`, err))
+        .catch(async err => {
+          // no WebP decode (Safari 14–15 on macOS 10.15) or a missing file: set a
+          // designed pane with the client's name instead of blank glass
+          console.warn(`[work] screenshot unavailable for ${FEATURED[k].id}; drawing its name on the pane`, err)
+          try {
+            const w = FEATURED[k]
+            const pre = isPreview(w.url)
+            const host = pre ? 'Pre-launch build' : hostOf(w.url)
+            const tex = await paneFallbackTexture({ name: w.name, industry: w.industry, host, tag: `CW-${pad(k + 1)}`, preview: pre })
+            tex.anisotropy = 8
+            const m = this.units[k].shotMat
+            const old = m.map
+            m.map = tex
+            old?.dispose()
+          } catch {
+            /* keep the dark glass */
+          }
+        })
     load(0)
     whenRevealed().then(async () => {
       for (let k = 1; k < NF; k++) {
@@ -509,6 +583,7 @@ class Work implements Chapter {
       cardTop: this.cards.map(c => (c.root.offsetHeight > 0 ? dock.offsetTop + c.root.offsetTop : H * 0.55)),
       boardR: board.offsetWidth > 0 ? board.offsetLeft + board.offsetWidth : W * 0.42,
       boardTop: board.offsetHeight > 0 ? board.offsetTop : H * 0.4,
+      signR: this.sign.offsetWidth > 0 ? this.sign.offsetLeft + this.sign.offsetWidth : Math.min(W * 0.5, 624),
     }
     return this.lay
   }
@@ -535,10 +610,15 @@ class Work implements Chapter {
       out.tgt.set(-4, lerp(7, 8, u), 16)
       out.fov = 60
     } else {
-      // closer in: the tower right of centre, the stillage low right, the sign bottom-left
-      out.pos.set(lerp(30, 29, u), 1.7, lerp(42, 40.8, u))
-      out.tgt.set(-18, lerp(17, 18, u), 14)
-      out.fov = 52
+      // standing in the gap between the mixer truck (x 21–23, z 40–48: it stays
+      // behind the camera) and the stillage, looking up at the steel: the
+      // stillage sits in the clear space right of the sign, its foot just above
+      // the bottom band, the tower and the crane climbing behind it
+      out.pos.set(lerp(22, 21.5, u), 1.7, lerp(38.5, 37.5, u))
+      _a.set(RACK.x, 0.3, RACK.z + 1.6)
+      // (narrower than 16:10: widen the lens so the tower keeps its width in frame)
+      const fov = Math.max(52, (2 * Math.atan(0.78 / (L.W / Math.max(1, L.H)))) / DEG)
+      aimAt(out, _a, L.signR + (L.right - L.signR) * 0.5, L.bottom - 14 - 6 * u, fov, L.W, L.H, -0.36, -0.1)
     }
     return out
   }
@@ -572,7 +652,7 @@ class Work implements Chapter {
   /** Looking down the face of the tower at the column of installed units. */
   private dirShot(u: number, out: Shot) {
     const L = this.lay!
-    _c.set(SLOT_X - 1, lerp(36, 33, u), UNIT_Z)
+    _c.set(SLOT_X - 1, lerp(32, 29, u), UNIT_Z)
     frameTo(out, _c, L.portrait ? 16 : 22, 48, lerp(0.42, 0.5, u), lerp(0.58, 0.62, u), 40, this.region('dir'), L.W, L.H)
     return out
   }
@@ -589,7 +669,12 @@ class Work implements Chapter {
   private shotAt(l: number, out: Shot) {
     const join0 = itemStart(0) + P_RIDE * SPAN
     if (l < INTRO_HOLD) return this.introShot(l / INTRO_HOLD, out)
-    if (l < join0) return blendShot(out, this.introShot(1, this.sa), this.rideShot(0, l, this.sb), (l - INTRO_HOLD) / (join0 - INTRO_HOLD), 2)
+    // up and over the mixer truck parked inside the gate (x 21–23, z 40–48): no
+    // pull back toward it, a rise instead, so it passes under the frame
+    if (l < join0) {
+      const t = (l - INTRO_HOLD) / (join0 - INTRO_HOLD)
+      return blendShot(out, this.introShot(1, this.sa), this.rideShot(0, l, this.sb), t, 0, this.lay!.portrait ? 8 : 3)
+    }
     if (l < F1) {
       const k = Math.min(NF - 1, Math.floor((l - F0) / SPAN))
       const p = clamp((l - itemStart(k)) / SPAN)
@@ -650,6 +735,8 @@ class Work implements Chapter {
     applySite(ctx, 'work', l)
     // a little morning haze: depth between the steel, the far city recedes
     ctx.world.params.fog = 1.5
+    // the curtain wall follows the client units up the face
+    ctx.world.params.glazed = glazedAt(l)
 
     // ---- the hook, the crane, the rig
     const H = hookAt(l, this.hook)
@@ -667,6 +754,7 @@ class Work implements Chapter {
 
     // ---- units
     const sky = ctx.world.hemi.color
+    const ground = ctx.world.hemi.groundColor
     for (let k = 0; k < NF; k++) {
       const u = this.units[k]
       const root = u.root
@@ -685,10 +773,11 @@ class Work implements Chapter {
       }
       // the glass: a sky sheen, and a glint that runs across it as it turns / is set
       u.u.uSky.value.copy(sky).multiplyScalar(0.9)
+      u.u.uGround.value.copy(ground)
       const setSweep = smoothstep(landT(k) - 0.22 * SPAN, landT(k) + 0.3 * SPAN, l)
       const twist = carrying === k ? _e.y * 9 : 0
       u.u.uGlint.value = setSweep > 0 && setSweep < 1 ? lerp(-0.5, 1.9, setSweep) : 0.55 + twist
-      u.u.uSheen.value = carrying === k ? 1 : 0.7
+      u.u.uSheen.value = carrying === k ? 1 : 0.85
     }
 
     // ---- the slot being filled: a cyan blueprint opening, drawn on before the unit arrives
@@ -708,7 +797,7 @@ class Work implements Chapter {
     this.bolts.visible = glow > 0.04
     if (this.bolts.visible) {
       slotCentre(hot, this.bolts.position)
-      this.boltMat.color.set('#ff7a2a').multiplyScalar((reduced ? 1.1 : 4) * glow)
+      this.boltMat.color.copy(BOLT_HOT).multiplyScalar((reduced ? 1.1 : 4) * glow)
     }
     if (!reduced && this.prevL >= 0 && Math.abs(l - this.prevL) < 0.03) {
       for (let k = 0; k < NF; k++) {

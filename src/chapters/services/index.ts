@@ -11,6 +11,7 @@ import { Fitout } from './fitout'
 import { Hud } from './hud'
 import { Stillage } from './load'
 import * as TL from './timeline'
+import { forInstances, instancedDepth } from './mats'
 import './services.css'
 
 /*
@@ -82,9 +83,10 @@ export default function create(): Chapter {
       await nextFrame()
       fitout = new Fitout(yOf)
       group.add(fitout.root)
-      workers = new THREE.InstancedMesh(personGeometry(), MAT.person(), 2)
+      workers = new THREE.InstancedMesh(personGeometry(), forInstances(MAT.person()), 2)
       workers.frustumCulled = false
       workers.castShadow = !ctx.mobile
+      workers.customDepthMaterial = instancedDepth()
       group.add(workers)
       load = new Stillage(ctx.mobile)
       group.add(load.root)
@@ -135,7 +137,8 @@ export default function create(): Chapter {
       // the top landing opens as the car arrives there at the end
       const topOpen = clamp((local - 0.975) / 0.02)
       if (TL.TOP_SLAB - 1 < GATE_SLABS) hoist.gateOpen[TL.TOP_SLAB - 1] = topOpen
-      hoist.update(carY, mastTop, landings, frame.time, ctx.reducedMotion)
+      const speed = TL.hoistSpeed(local)
+      hoist.update(carY, mastTop, landings, frame.time, ctx.reducedMotion, speed)
       let nb = 0
       for (let k = 0; k < TL.COUNT; k++) if (TL.slabReady(TL.slabOf(k), built)) nb = k + 1
       boards.setVisible(nb)
@@ -181,7 +184,7 @@ export default function create(): Chapter {
 
       // the copy
       const introOn = local > 0.012 && local < TL.A + 0.1 * TL.SPAN
-      hud.update(introOn, TL.cardIndex(local), TL.hoistSpeed(local) > 0.04)
+      hud.update(introOn, TL.cardIndex(local), speed > 0.04)
 
       // bloom only what is really lit (the signs, sparks, the beacon), not the bright morning sky
       ctx.post.params.bloomThreshold = 1.15

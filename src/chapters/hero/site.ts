@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { MAT, T, TOWER_W, etchLabel, iBeamGeometry, mergeAll, personGeometry } from '../../kit/steel'
+import { MAT, T, TOWER_W, etchLabel, iBeamGeometry, instancedDepth, mergeAll, personGeometry } from '../../kit/steel'
 import { nextFrame } from '../../core/yield'
 import { PenLines } from './pen'
 import { projectBoard } from './sign'
@@ -15,8 +15,13 @@ import { projectBoard } from './sign'
  *               (the world strings the perimeter), drawn on
  *   footings    grout pedestals, steel base plates and anchor bolts at every
  *               column of the world tower's grid (in its erection order)
- *   gang        ironworkers at the front-row plates, a surveyor's total station
+ *   gang        ironworkers at the far plates (small in every shot: scale, not
+ *               subject), dark against the dawn with a warm work-light rim;
+ *               a surveyor's total station on the east side
  *   lights      two mobile light towers, still burning at dawn
+ *   hoarding    the plywood hoarding round the lot (the world's copy, graphics
+ *               and all, is hidden while the hero stages its own site), with
+ *               the project board bolted to its street face
  *   load        a beam bundle on the crane's hook (spreader bar + slings) that
  *               the hero flies to the laydown yard and lands
  *
@@ -68,6 +73,29 @@ export function columnSpots(mobile: boolean): ColumnSpot[] {
 
 const box = (w: number, h: number, d: number, x: number, y: number, z: number) => new THREE.BoxGeometry(w, h, d).translate(x, y, z)
 
+/**
+ * The crew at dawn: read as figures against the site, not characters — the
+ * clothes a stop darker, and a warm rim where the work lights catch their
+ * edges (grazing view angles), so they hold as silhouettes.
+ */
+function crewMaterial() {
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0, roughness: 0.85 })
+  m.onBeforeCompile = shader => {
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <color_fragment>', '#include <color_fragment>\n  diffuseColor.rgb *= 0.62;')
+      .replace(
+        '#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+        {
+          float crewRim = 1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0);
+          totalEmissiveRadiance += vec3(1.0, 0.66, 0.36) * 0.55 * crewRim * crewRim * crewRim;
+        }`,
+      )
+  }
+  m.customProgramCacheKey = () => 'hero-crew-rim'
+  return m
+}
+
 export class Site {
   group = new THREE.Group()
   spots: ColumnSpot[]
@@ -103,6 +131,7 @@ export class Site {
     this.buildGang()
     this.buildLights()
     this.buildLoad()
+    this.buildHoarding()
     this.group.add(projectBoard(-12.4, FENCE, this.mobile))
   }
 
@@ -200,9 +229,10 @@ export class Site {
     // grout pedestal poured on the apron
     const cap = new THREE.BoxGeometry(1.5, 0.9, 1.5)
     cap.translate(0, -0.45 + 0.36, 0)
-    this.footings = new THREE.InstancedMesh(cap, MAT.concrete(), n)
+    this.footings = new THREE.InstancedMesh(cap, MAT.concrete({ instanced: true }), n)
     this.footings.receiveShadow = !this.mobile
     this.footings.castShadow = !this.mobile
+    this.footings.customDepthMaterial = instancedDepth()
     // base plate + four anchor bolts with nuts, one merged piece
     const parts: THREE.BufferGeometry[] = [box(0.9, 0.05, 0.9, 0, 0.385, 0)]
     for (const sx of [-1, 1])
@@ -212,8 +242,9 @@ export class Site {
         parts.push(b)
         parts.push(box(0.11, 0.06, 0.11, sx * 0.32, 0.44, sz * 0.32))
       }
-    this.plates = new THREE.InstancedMesh(mergeAll(parts), MAT.steel(), n)
+    this.plates = new THREE.InstancedMesh(mergeAll(parts), MAT.steel({ instanced: true }), n)
     this.plates.castShadow = !this.mobile
+    this.plates.customDepthMaterial = instancedDepth()
     this.footings.frustumCulled = false
     this.plates.frustumCulled = false
     this.group.add(this.footings, this.plates)
@@ -249,19 +280,21 @@ export class Site {
 
   // ---------------------------------------------------------------- the gang at the plates
   private buildGang() {
-    const at: [number, number, number, string][] = [
-      [-16.2, 16.3, 2.6, T.safety],
-      [-9.6, 16.4, 0.3, '#e9f53a'],
-      [2.2, 14.1, 3.6, T.safety],
-      [10.1, 16.2, -0.6, T.safety],
-      [15.9, 9.4, -1.9, '#e9f53a'],
+    // the far (east and back) rows: every hero camera works the front-left
+    // corner, so the crew stays 30 m+ out — scale for the steel, never the subject
+    const at: [number, number, number, 'work' | 'reach' | 'stand' | 'walk'][] = [
+      [14.3, -8.4, -2.2, 'work'],
+      [16.4, 3.3, -1.3, 'stand'],
+      [8.9, -16.5, 0.4, 'reach'],
+      [-3.3, -16.3, 0.9, 'work'],
+      [15.9, 14.8, -2.6, 'walk'],
     ]
     const use = this.mobile ? at.filter((_, i) => i % 2 === 0) : at
-    const geos = use.map(([x, z, ry, vest]) => personGeometry({ vest }).rotateY(ry).translate(x, APRON, z))
-    // a surveyor's total station on its tripod, and its operator
-    const tp = new THREE.Vector3(-24.5, 0, 25.5)
-    geos.push(personGeometry({ vest: '#e9f53a' }).rotateY(2.4).translate(tp.x - 0.9, 0, tp.z + 0.7))
-    const people = new THREE.Mesh(mergeAll(geos), MAT.person())
+    const geos = use.map(([x, z, ry, pose], i) => personGeometry({ pose, seed: 40 + i }).rotateY(ry).translate(x, APRON, z))
+    // a surveyor's total station on its tripod on the east side, and its operator
+    const tp = new THREE.Vector3(27, 0, 22)
+    geos.push(personGeometry({ pose: 'stand', seed: 47 }).rotateY(-2.2).translate(tp.x + 0.8, 0, tp.z + 0.7))
+    const people = new THREE.Mesh(mergeAll(geos), crewMaterial())
     people.castShadow = !this.mobile
     const tri: THREE.BufferGeometry[] = []
     for (let k = 0; k < 3; k++) {
@@ -298,6 +331,73 @@ export class Site {
     this.lampMat = new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffd7a0').multiplyScalar(5), toneMapped: false })
     const heads = new THREE.Mesh(mergeAll(lamps), this.lampMat)
     this.group.add(body, heads)
+  }
+
+  // ---------------------------------------------------------------- hoarding
+  private buildHoarding() {
+    const H = 2.6
+    const SHEET = 2.44
+    const GATE: [number, number] = [16, 28]
+    // painted plywood, sheet by sheet: graphite, a hazard foot band, a yellow cap rail
+    const c = document.createElement('canvas')
+    c.width = 256
+    c.height = Math.round((256 * H) / SHEET)
+    const g = c.getContext('2d')!
+    const band = Math.round(c.height * 0.1)
+    g.fillStyle = '#22282f'
+    g.fillRect(0, 0, c.width, c.height)
+    g.fillStyle = 'rgba(0,0,0,0.35)'
+    g.fillRect(0, 0, 3, c.height)
+    g.fillStyle = 'rgba(255,255,255,0.05)'
+    g.fillRect(3, 0, 2, c.height)
+    g.save()
+    g.beginPath()
+    g.rect(0, c.height - band, c.width, band)
+    g.clip()
+    g.fillStyle = T.craneYellow
+    g.fillRect(0, c.height - band, c.width, band)
+    g.fillStyle = '#15181b'
+    for (let x = -band * 2; x < c.width + band * 2; x += band * 2) {
+      g.beginPath()
+      g.moveTo(x, c.height)
+      g.lineTo(x + band, c.height - band)
+      g.lineTo(x + band * 2, c.height - band)
+      g.lineTo(x + band, c.height)
+      g.closePath()
+      g.fill()
+    }
+    g.restore()
+    g.fillStyle = T.craneYellow
+    g.fillRect(0, 0, c.width, 3)
+    const tex = new THREE.CanvasTexture(c)
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.wrapS = THREE.RepeatWrapping
+    tex.anisotropy = 4
+
+    const V = (x: number, z: number) => new THREE.Vector2(x, z)
+    // counter-clockwise from above, so each run's outward face is on its right
+    const runs: [THREE.Vector2, THREE.Vector2][] = [
+      [V(-FENCE, FENCE), V(GATE[0], FENCE)],
+      [V(GATE[1], FENCE), V(FENCE, FENCE)],
+      [V(FENCE, FENCE), V(FENCE, -FENCE)],
+      [V(FENCE, -FENCE), V(-FENCE, -FENCE)],
+      [V(-FENCE, -FENCE), V(-FENCE, FENCE)],
+    ]
+    const quad = (a: THREE.Vector2, b: THREE.Vector2, out: boolean) => {
+      const len = a.distanceTo(b)
+      const u = len / SHEET
+      const geo = new THREE.BufferGeometry()
+      const [p, q] = out ? [a, b] : [b, a]
+      geo.setAttribute('position', new THREE.Float32BufferAttribute([p.x, 0, p.y, q.x, 0, q.y, q.x, H, q.y, p.x, 0, p.y, q.x, H, q.y, p.x, H, p.y], 3))
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, u, 0, u, 1, 0, 0, u, 1, 0, 1], 2))
+      geo.computeVertexNormals()
+      return geo
+    }
+    const outer = new THREE.Mesh(mergeAll(runs.map(([a, b]) => quad(a, b, true))), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.75, metalness: 0 }))
+    const inner = new THREE.Mesh(mergeAll(runs.map(([a, b]) => quad(a, b, false))), new THREE.MeshStandardMaterial({ color: '#8a7a62', roughness: 0.9 }))
+    outer.receiveShadow = inner.receiveShadow = !this.mobile
+    outer.castShadow = !this.mobile
+    this.group.add(outer, inner)
   }
 
   // ---------------------------------------------------------------- the load on the hook

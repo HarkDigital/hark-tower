@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { FLOOR_H, FLOORS, MAT, T, TOWER_W, Sparks, iBeamGeometry, latticeGeometry, mergeAll, personGeometry, tint } from '../kit/steel'
+import { FLOOR_H, FLOORS, HIVIS, MAT, T, TC, TOWER_W, Sparks, iBeamGeometry, instancedDepth, latticeGeometry, mergeAll, personGeometry, tint } from '../kit/steel'
 
 /*
  * THE FRONTIER — the working top of the steel, which follows the erection up
@@ -195,26 +195,23 @@ export class Frontier {
     this.light = new THREE.PointLight(T.sodium, 0, 70, 2)
     this.root.add(this.light)
 
-    // ---- the raising gang ---------------------------------------------------
-    const crew: [number, number, number, string][] = [
-      [-9.6, 7.4, 2.6, T.safety],
-      [-6.2, 5.0, -0.8, '#e8e04a'],
-      [8.0, -9.0, 1.9, T.safety],
-      [12.4, 12.6, 0.6, '#e8e04a'],
-      [-13.0, -4.0, 1.2, T.safety],
-      [2.2, 13.4, 3.4, T.safety],
+    // ---- the raising gang: connectors at the bundles and the edge, a
+    //      signaller guiding the next piece in (one merged, varied crew) ------
+    const crew: [number, number, number, 'stand' | 'walk' | 'work' | 'reach', number][] = [
+      [-9.6, 7.4, 2.6, 'work', 0],
+      [-6.2, 5.0, -0.8, 'reach', 1],
+      [8.0, -9.0, 1.9, 'work', 0],
+      [12.4, 12.6, 0.6, 'stand', 2],
+      [-13.0, -4.0, 1.2, 'walk', 1],
+      [2.2, 13.4, 3.4, 'stand', 0],
     ]
     const crewN = mobile ? 4 : crew.length
-    for (const hiVis of [T.safety, '#e8e04a']) {
-      const mine = crew.slice(0, crewN).filter(c => c[3] === hiVis)
-      if (!mine.length) continue
-      const people = new THREE.InstancedMesh(personGeometry({ vest: hiVis }), MAT.person(), mine.length)
-      mine.forEach(([x, z, ry], i) =>
-        people.setMatrixAt(i, new THREE.Matrix4().compose(new THREE.Vector3(x, 0.13, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), ry), new THREE.Vector3(1, 1, 1))),
-      )
-      people.castShadow = shadow
-      this.level.add(people)
-    }
+    const gang = crew
+      .slice(0, crewN)
+      .map(([x, z, ry, pose, vest], i) => personGeometry({ pose, vest: HIVIS[vest], seed: 31 + i * 5 }).rotateY(ry).translate(x, 0.13, z))
+    const people = new THREE.Mesh(mergeAll(gang), MAT.person())
+    people.castShadow = shadow
+    this.level.add(people)
 
     // ---- jump-form rig round the core top: two working decks on brackets,
     //      a mesh screen round the lower one, handrails (light, open)
@@ -256,14 +253,15 @@ export class Frontier {
     // ---- construction hoist: instanced mast sections + ties + the car -------
     const seg = latticeGeometry({ len: MAST_SEG, size: 0.9, bay: 1.5, chord: 0.09 })
     const nSeg = Math.ceil((FLOORS * FLOOR_H + 6) / MAST_SEG)
-    this.hoistMast = new THREE.InstancedMesh(seg, MAT.steel(), nSeg)
+    this.hoistMast = new THREE.InstancedMesh(seg, MAT.steel({ instanced: true }), nSeg)
     for (let i = 0; i < nSeg; i++) this.hoistMast.setMatrixAt(i, new THREE.Matrix4().makeTranslation(MAST_X, i * MAST_SEG, MAST_Z))
     this.hoistMast.frustumCulled = false
     this.hoistMast.castShadow = shadow
+    this.hoistMast.customDepthMaterial = instancedDepth()
     this.root.add(this.hoistMast)
     const tie = new THREE.BoxGeometry(MAST_X - HALF - 0.1, 0.12, 0.12).translate(-(MAST_X - HALF - 0.1) / 2, 0, 0)
     const nTie = Math.ceil(nSeg / 2)
-    this.hoistTies = new THREE.InstancedMesh(tie, MAT.steel(), nTie)
+    this.hoistTies = new THREE.InstancedMesh(tie, MAT.steel({ instanced: true }), nTie)
     for (let i = 0; i < nTie; i++) this.hoistTies.setMatrixAt(i, new THREE.Matrix4().makeTranslation(MAST_X, 6 + i * 12, MAST_Z))
     this.hoistTies.frustumCulled = false
     this.root.add(this.hoistTies)
@@ -327,7 +325,7 @@ export class Frontier {
 
     // work lights
     const on = s.lights
-    this.lampMat.color.set(T.sodium).multiplyScalar(0.25 + on * 3.2)
+    this.lampMat.color.copy(TC.sodium).multiplyScalar(0.25 + on * 3.2)
     this.glow.uniforms.uOn.value = on
     this.glow.uniforms.uPx.value = pxHeight
     this.light.intensity = this.level.visible ? on * 140 : 0

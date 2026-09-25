@@ -175,11 +175,32 @@ export function buildHud(stage: HTMLElement): Hud {
     ro.observe(panel)
   }
   window.addEventListener('resize', dirty)
+  // the chrome's plates are measured too (portrait): again once they're shown
+  window.addEventListener('hark:reveal', dirty)
   document.fonts?.ready.then(dirty).catch(() => {})
   return hud
 }
 
 const FIT = ['ct-fit-1', 'ct-fit-2', 'ct-fit-3'] as const
+/** The chrome's top plates (whichever are shown at this width). */
+const TOP_PLATES = ['.ch-top .ch-brand', '.ch-top .ch-nav', '.ch-top .ch-menu-btn']
+
+/**
+ * Portrait: the top of the tower's free area. The tower may rise into the
+ * top band's empty middle (brand left, menu right) — unless a chrome plate
+ * reaches across the tower's centre line (narrow phones: the brand plate
+ * runs past the middle), then it starts below the plates.
+ */
+function portraitTop(band: DOMRect) {
+  let top = Math.max(band.top * 0.5, 34)
+  const cx = (band.left + band.right) / 2
+  for (const sel of TOP_PLATES) {
+    const r = document.querySelector(sel)?.getBoundingClientRect()
+    if (!r || r.width < 1 || r.height < 1) continue
+    if (r.left < cx + 48 && r.right > cx - 48) top = Math.max(top, r.bottom + 14)
+  }
+  return top
+}
 
 export function measureHud(hud: Hud, W: number, H: number): HudLayout {
   const stage = hud.stage
@@ -204,8 +225,7 @@ export function measureHud(hud: Hud, W: number, H: number): HudLayout {
     art = { x0: panel.x1 + gap, x1: band.right, y0: band.top, y1: band.bottom }
   } else {
     const gap = Math.max(12, H * 0.016)
-    // the tower may rise into the top band's empty middle (brand left, menu right)
-    const top = Math.max(band.top * 0.5, 34)
+    const top = portraitTop(band)
     art = { x0: band.left, x1: band.right, y0: top, y1: Math.max(top + 90, panel.y0 - gap) }
   }
   return { W, H, portrait, art, panel }

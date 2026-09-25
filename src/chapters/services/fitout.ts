@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { MAT, T, TOWER_W } from '../../kit/steel'
 import { COUNT, slabOf } from './timeline'
+import { forInstances } from './mats'
 
 /*
  * FIT-OUT — what a service floor becomes when the car docks: framed
@@ -117,7 +118,7 @@ export class Fitout {
     for (const sx of [-1, 1]) fr.push(new THREE.BoxGeometry(0.07, 3.9, 0.07).translate(sx * (MOD / 2 - 0.035), 0, 0))
     for (const sy of [-1, 1]) fr.push(new THREE.BoxGeometry(MOD, 0.08, 0.07).translate(0, sy * 1.91, 0))
     const frameGeo = mergeSimple(fr)
-    this.frames = new THREE.InstancedMesh(frameGeo, MAT.mullion(), total)
+    this.frames = new THREE.InstancedMesh(frameGeo, forInstances(MAT.mullion()), total)
     this.frames.frustumCulled = false
     this.hideAll(this.glass, total)
     this.hideAll(this.frames, total)

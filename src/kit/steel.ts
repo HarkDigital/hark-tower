@@ -5,11 +5,20 @@ import * as THREE from 'three'
  * chapter speaks the same construction language as the tower in the world.
  *
  *   T                         palette by name (hex strings)
+ *   TC                        the same palette pre-parsed as THREE.Color (linear);
+ *                             treat as constants: out.copy(TC.signal).multiplyScalar(k)
+ *                             instead of color.set(T.signal) every frame
  *   MAT                       cached materials: steel (galvanised graphite),
  *                             primer (red-oxide beams), concrete, curtain
  *                             glass (mirror-tinted, reflects the sky), mullion,
  *                             craneYellow, safety (orange), rubber, signal
- *                             (emissive Hark green)
+ *                             (emissive Hark green). Every one takes
+ *                             { instanced: true } for use on an InstancedMesh:
+ *                             a separately cached twin, so one material is never
+ *                             drawn by both plain and instanced meshes (three
+ *                             re-resolves the program on every flip)
+ *   instancedDepth()          one shared depth material for castShadow
+ *                             InstancedMeshes (mesh.customDepthMaterial)
  *   iBeamGeometry(len, o)     an I-beam (wide-flange) along +x, centred
  *   hssGeometry(len, size)    a square hollow section (columns, braces)
  *   latticeGeometry(o)        a crane-style lattice box truss (merged)
@@ -21,8 +30,12 @@ import * as THREE from 'three'
  *   etchLabel(text, o)        stencil / painted text on a plane (canvas)
  *   mergeAll(geos)            merge (position/normal; + color/uv when all have them)
  *   tint(geo, color)          give a geometry a flat vertex colour (for mergeAll)
- *   personGeometry(o)         a 1.8 m worker (hi-vis vest, hard hat), vertex-coloured;
- *                             pair with MAT.person()
+ *   personGeometry(o)         a worker at real scale (tapered limbs, work
+ *                             clothes, hi-vis vest with reflective tape, hard
+ *                             hat), vertex-coloured; varied skin tones, vests,
+ *                             hats, builds and poses from `seed` (successive
+ *                             calls vary on their own); pair with MAT.person()
+ *   HIVIS, SKIN, HATS         the palettes it draws from
  *
  * Units are metres. One floor is FLOOR_H = 4 m; the tower is 30 x 30 m.
  */
@@ -49,36 +62,62 @@ export const FLOOR_H = 4
 export const FLOORS = 60
 export const TOWER_W = 30
 
+/** Pre-parsed palette (linear THREE.Color). Constants: copy them, never mutate. */
+export const TC = Object.fromEntries(Object.entries(T).map(([k, v]) => [k, new THREE.Color(v)])) as { readonly [K in keyof typeof T]: THREE.Color }
+
+/** How a cached material is drawn: `instanced` returns its InstancedMesh twin. */
+export interface MatUse {
+  instanced?: boolean
+}
+
 const cache = new Map<string, THREE.Material>()
-function once<M extends THREE.Material>(key: string, make: () => M): M {
-  let m = cache.get(key) as M | undefined
+function once<M extends THREE.Material>(key: string, make: () => M, use?: MatUse): M {
+  const k = use?.instanced ? `${key}|instanced` : key
+  let m = cache.get(k) as M | undefined
   if (!m) {
     m = make()
-    cache.set(key, m)
+    m.name = k
+    cache.set(k, m)
   }
   return m
 }
 
 export const MAT = {
-  steel: () => once('steel', () => new THREE.MeshStandardMaterial({ color: T.steel, metalness: 0.75, roughness: 0.42 })),
-  primer: () => once('primer', () => new THREE.MeshStandardMaterial({ color: T.primer, metalness: 0.35, roughness: 0.62 })),
-  concrete: () => once('concrete', () => new THREE.MeshStandardMaterial({ color: T.concrete, metalness: 0, roughness: 0.92 })),
-  concreteDark: () => once('concreteDark', () => new THREE.MeshStandardMaterial({ color: T.concreteDark, metalness: 0, roughness: 0.95 })),
+  steel: (use?: MatUse) => once('steel', () => new THREE.MeshStandardMaterial({ color: T.steel, metalness: 0.75, roughness: 0.42 }), use),
+  primer: (use?: MatUse) => once('primer', () => new THREE.MeshStandardMaterial({ color: T.primer, metalness: 0.35, roughness: 0.62 }), use),
+  concrete: (use?: MatUse) => once('concrete', () => new THREE.MeshStandardMaterial({ color: T.concrete, metalness: 0, roughness: 0.92 }), use),
+  concreteDark: (use?: MatUse) => once('concreteDark', () => new THREE.MeshStandardMaterial({ color: T.concreteDark, metalness: 0, roughness: 0.95 }), use),
   /** the curtain wall: tinted, near-mirror; it shows the sky (scene.environment) */
-  glass: () =>
-    once('glass', () => new THREE.MeshStandardMaterial({ color: T.glass, metalness: 0.92, roughness: 0.07, envMapIntensity: 1.2 })),
-  mullion: () => once('mullion', () => new THREE.MeshStandardMaterial({ color: '#2a3036', metalness: 0.8, roughness: 0.35 })),
-  craneYellow: () => once('craneYellow', () => new THREE.MeshStandardMaterial({ color: T.craneYellow, metalness: 0.3, roughness: 0.5 })),
-  safety: () => once('safety', () => new THREE.MeshStandardMaterial({ color: T.safety, metalness: 0.1, roughness: 0.6 })),
-  rubber: () => once('rubber', () => new THREE.MeshStandardMaterial({ color: '#15181b', metalness: 0, roughness: 0.85 })),
+  glass: (use?: MatUse) =>
+    once('glass', () => new THREE.MeshStandardMaterial({ color: T.glass, metalness: 0.92, roughness: 0.07, envMapIntensity: 1.2 }), use),
+  mullion: (use?: MatUse) => once('mullion', () => new THREE.MeshStandardMaterial({ color: '#2a3036', metalness: 0.8, roughness: 0.35 }), use),
+  craneYellow: (use?: MatUse) => once('craneYellow', () => new THREE.MeshStandardMaterial({ color: T.craneYellow, metalness: 0.3, roughness: 0.5 }), use),
+  safety: (use?: MatUse) => once('safety', () => new THREE.MeshStandardMaterial({ color: T.safety, metalness: 0.1, roughness: 0.6 }), use),
+  rubber: (use?: MatUse) => once('rubber', () => new THREE.MeshStandardMaterial({ color: '#15181b', metalness: 0, roughness: 0.85 }), use),
   /** vertex-coloured matte (personGeometry, site props built with tint()) */
-  person: () => once('person', () => new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0, roughness: 0.8 })),
+  person: (use?: MatUse) => once('person', () => new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0, roughness: 0.8 }), use),
   /** emissive Hark green (crown, status lights); blooms */
-  signal: (strength = 3) =>
-    once(`signal:${strength}`, () => new THREE.MeshBasicMaterial({ color: new THREE.Color(T.signal).multiplyScalar(strength), toneMapped: false })),
+  signal: (strength = 3, use?: MatUse) =>
+    once(`signal:${strength}`, () => new THREE.MeshBasicMaterial({ color: new THREE.Color(T.signal).multiplyScalar(strength), toneMapped: false }), use),
   /** warm interior light (fitted floors at dusk) */
-  interior: (strength = 1.6) =>
-    once(`interior:${strength}`, () => new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffd9a0').multiplyScalar(strength), toneMapped: false })),
+  interior: (strength = 1.6, use?: MatUse) =>
+    once(`interior:${strength}`, () => new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffd9a0').multiplyScalar(strength), toneMapped: false }), use),
+}
+
+let depthShared: THREE.MeshDepthMaterial | null = null
+/**
+ * One depth material for every castShadow InstancedMesh (set it as
+ * mesh.customDepthMaterial). Without it the shadow pass shares its single
+ * default depth material between plain and instanced casters and rebuilds the
+ * program parameters on every flip. Only for InstancedMeshes, and only ones
+ * whose material needs no vertex patch or alpha test.
+ */
+export function instancedDepth(): THREE.MeshDepthMaterial {
+  if (!depthShared) {
+    depthShared = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking })
+    depthShared.name = 'depth|instanced'
+  }
+  return depthShared
 }
 
 /** Wide-flange I-beam along +x from 0..len (centred on y/z). depth = web height. */
@@ -222,27 +261,119 @@ export function tint(g: THREE.BufferGeometry, color: THREE.ColorRepresentation):
   return g
 }
 
+/** Hi-vis vest colours: fluorescent orange, fluorescent yellow, lime. */
+export const HIVIS = ['#ff6a1a', '#f2e21e', '#b8e62c'] as const
+/** A range of real skin tones, light to deep. */
+export const SKIN = ['#f1c9a5', '#e0ac85', '#c68863', '#a86e4b', '#8a5536', '#6b3f28', '#4e2c1c'] as const
+/** Hard hats: white (most), yellow, orange, blue (supervisors, visitors, engineers). */
+export const HATS = ['#f4f1ea', '#f4f1ea', '#f2c200', '#f4f1ea', '#ff7a1a', '#2f6fd1'] as const
+const SHIRTS = ['#2b3544', '#3a3f45', '#34465e', '#40463a', '#56524a', '#2a2c30'] as const
+const TROUSERS = ['#23272d', '#2e3a4f', '#3a3630', '#4a4436', '#262a31'] as const
+
+let personSerial = 0
+
 /**
- * A construction worker, 1.8 m, standing on y = 0 facing +z: dark work
- * trousers, hi-vis vest (orange or yellow), white hard hat. Vertex-coloured:
- * use with a `vertexColors: true` material (e.g. MAT.person()), instance it
- * for crews. Tiny at tower scale — they are the scale reference.
+ * A construction worker at real scale (1.62–1.9 m), standing on y = 0 facing
+ * +z: tapered legs and forearms, boots, a work shirt under a hi-vis vest with
+ * two bands of silver reflective tape, a hard hat with a peak. Vertex-coloured
+ * (use with MAT.person()); merge several into one mesh for a crew, or instance
+ * one.
+ *
+ *   seed   picks skin tone, clothes, hat, build and small pose offsets
+ *          (omitted: each call takes the next seed, so a crew varies by itself)
+ *   vest / hat / skin   override the palette picks
+ *   pose   'stand' | 'walk' | 'work' (arms forward, handling something) |
+ *          'reach' (one arm up, signalling / guiding a load)
  */
-export function personGeometry(o: { vest?: THREE.ColorRepresentation; hat?: THREE.ColorRepresentation } = {}): THREE.BufferGeometry {
-  const dark = '#23272d'
-  const vest = o.vest ?? T.safety
-  const skin = '#b98b6e'
-  return mergeAll([
-    tint(new THREE.BoxGeometry(0.15, 0.86, 0.2).translate(-0.1, 0.43, 0), dark),
-    tint(new THREE.BoxGeometry(0.15, 0.86, 0.2).translate(0.1, 0.43, 0), dark),
-    tint(new THREE.BoxGeometry(0.44, 0.62, 0.26).translate(0, 1.17, 0), vest),
-    tint(new THREE.BoxGeometry(0.1, 0.58, 0.12).translate(-0.28, 1.14, 0.02), dark),
-    tint(new THREE.BoxGeometry(0.1, 0.58, 0.12).translate(0.28, 1.14, 0.02), dark),
-    tint(new THREE.BoxGeometry(0.16, 0.12, 0.16).translate(0, 1.52, 0), skin),
-    tint(new THREE.SphereGeometry(0.11, 8, 6).translate(0, 1.63, 0), skin),
-    tint(new THREE.SphereGeometry(0.135, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2).translate(0, 1.67, 0), o.hat ?? '#f4f1ea'),
-    tint(new THREE.CylinderGeometry(0.17, 0.17, 0.02, 12).translate(0, 1.67, 0.02), o.hat ?? '#f4f1ea'),
-  ])
+export function personGeometry(
+  o: {
+    vest?: THREE.ColorRepresentation
+    hat?: THREE.ColorRepresentation
+    skin?: THREE.ColorRepresentation
+    pose?: 'stand' | 'walk' | 'work' | 'reach'
+    seed?: number
+  } = {},
+): THREE.BufferGeometry {
+  let s = (o.seed ?? personSerial++) * 7919 + 17
+  const rnd = () => {
+    s = (s * 16807 + 11) % 2147483647
+    return s / 2147483647
+  }
+  const pick = <V>(a: readonly V[]) => a[Math.floor(rnd() * a.length) % a.length]
+  const skin = o.skin ?? pick(SKIN)
+  const vest = o.vest ?? pick(HIVIS)
+  const hat = o.hat ?? pick(HATS)
+  const shirt = pick(SHIRTS)
+  const trousers = pick(TROUSERS)
+  const tape = '#c9cdd0'
+  const boot = '#1f1a16'
+  const pose = o.pose ?? 'stand'
+  const lean = (rnd() - 0.5) * 0.08
+  const parts: THREE.BufferGeometry[] = []
+  const X = new THREE.Vector3(1, 0, 0)
+  const Z = new THREE.Vector3(0, 0, 1)
+  /** a limb hanging from `at` (its top), swung forward by `fwd` and out by `out` (radians) */
+  const limb = (g: THREE.BufferGeometry, at: THREE.Vector3, fwd: number, out: number) => {
+    g.applyQuaternion(new THREE.Quaternion().setFromAxisAngle(Z, out))
+    g.applyQuaternion(new THREE.Quaternion().setFromAxisAngle(X, -fwd))
+    return g.translate(at.x, at.y, at.z)
+  }
+  /** a tapered round section hanging down from its top: radii top/bottom, length */
+  const taper = (rt: number, rb: number, len: number, seg = 7) => new THREE.CylinderGeometry(rt, rb, len, seg, 1).translate(0, -len / 2, 0)
+  const capsule = (r: number, len: number) => new THREE.CapsuleGeometry(r, Math.max(0.01, len - 2 * r), 2, 7).translate(0, -len / 2, 0)
+
+  // legs: thigh → shin in one tapered trouser leg, a boot at the foot
+  const legSwing = pose === 'walk' ? 0.32 : pose === 'work' ? 0.08 : 0.03
+  for (const side of [-1, 1]) {
+    const hip = new THREE.Vector3(side * 0.095, 0.93, 0)
+    const sw = side * legSwing * (pose === 'work' ? -1 : 1)
+    parts.push(tint(limb(taper(0.082, 0.056, 0.84), hip, sw, side * 0.035), trousers))
+    const footZ = Math.sin(sw) * 0.84
+    parts.push(tint(new THREE.BoxGeometry(0.12, 0.1, 0.27).translate(side * 0.11, 0.05, footZ + 0.04), boot))
+  }
+  // pelvis
+  parts.push(tint(new THREE.CylinderGeometry(0.165, 0.15, 0.2, 9).scale(1, 1, 0.66).translate(0, 0.93, 0), trousers))
+  // torso (shirt), the vest over it, the reflective tape round the vest
+  parts.push(tint(new THREE.CylinderGeometry(0.2, 0.158, 0.56, 10).scale(1, 1, 0.6).translate(0, 1.2, 0), shirt))
+  parts.push(tint(new THREE.CylinderGeometry(0.212, 0.172, 0.44, 10, 1, true).scale(1, 1, 0.64).translate(0, 1.18, 0), vest))
+  for (const y of [1.08, 1.27]) {
+    const r = 0.172 + ((y - 0.96) / 0.44) * 0.04 + 0.006
+    parts.push(tint(new THREE.CylinderGeometry(r + 0.002, r, 0.035, 10, 1, true).scale(1, 1, 0.65).translate(0, y, 0), tape))
+  }
+  // shoulders + arms (sleeves), hands
+  const armFwd: [number, number] =
+    pose === 'work' ? [0.95 + rnd() * 0.3, 0.8 + rnd() * 0.3] : pose === 'walk' ? [-0.3, 0.3] : pose === 'reach' ? [0.2, 2.7] : [0.06 + rnd() * 0.1, -0.04 + rnd() * 0.1]
+  ;[-1, 1].forEach((side, i) => {
+    const sh = new THREE.Vector3(side * 0.225, 1.45, 0)
+    parts.push(tint(new THREE.SphereGeometry(0.07, 7, 5).translate(sh.x, sh.y - 0.01, 0), shirt))
+    const out = side * (pose === 'reach' && i === 1 ? 0.25 : 0.1)
+    parts.push(tint(limb(capsule(0.052, 0.56), sh, armFwd[i], out), shirt))
+    const hand = new THREE.Vector3(0, -0.6, 0).applyAxisAngle(Z, out).applyAxisAngle(X, -armFwd[i]).add(sh)
+    parts.push(tint(new THREE.SphereGeometry(0.045, 6, 4).translate(hand.x, hand.y, hand.z), skin))
+  })
+  // neck, head, hard hat (dome + peak)
+  parts.push(tint(new THREE.CylinderGeometry(0.052, 0.058, 0.1, 7).translate(0, 1.52, 0.005), skin))
+  parts.push(tint(new THREE.SphereGeometry(0.1, 10, 8).scale(0.9, 1.1, 0.98).translate(0, 1.64, 0.01), skin))
+  parts.push(tint(new THREE.SphereGeometry(0.125, 12, 5, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.82, 1.08).translate(0, 1.68, 0.005), hat))
+  parts.push(tint(new THREE.CylinderGeometry(0.14, 0.145, 0.018, 12).scale(1, 1, 1.12).translate(0, 1.685, 0.025), hat))
+  parts.push(tint(new THREE.BoxGeometry(0.16, 0.014, 0.08).translate(0, 1.684, 0.16), hat))
+  const g = mergeAll(parts)
+  // build: height 0.9–1.06 of 1.8 m, a little broader or slimmer; a slight lean
+  const h = 0.92 + rnd() * 0.14
+  const w = 0.94 + rnd() * 0.14
+  g.scale(w, h, w)
+  if (pose === 'work') {
+    // bent into the job: everything above the hips leans forward
+    const pos = g.attributes.position as THREE.BufferAttribute
+    for (let i = 0; i < pos.count; i++) {
+      const y = pos.getY(i)
+      if (y > 0.9 * h) pos.setZ(i, pos.getZ(i) + (y - 0.9 * h) * 0.32)
+    }
+    // (normals left as they were: a small shear, and recomputing on a
+    // non-indexed merge would facet every round part)
+  }
+  g.rotateZ(lean)
+  return g
 }
 
 /**

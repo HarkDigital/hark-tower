@@ -72,6 +72,12 @@
     opacity 0.4s ease 0.08s,
     visibility 0s;
 }
+@media (prefers-reduced-motion: reduce) {
+  .stage-process .pr-card,
+  .stage-process .pr-card.is-in {
+    transition-delay: 0s;
+  }
+}
 
 /* title block: a ruled strip like the corner of a drawing sheet */
 .stage-process .pr-tb {

@@ -405,6 +405,9 @@ export class Engine {
           slot.chapter.update(l, this.frame, slot.ctx)
           slot.chapter.camera(l, this.frame, this.pose)
           this.applyCamera(0)
+          // let the world take this chapter's state too (world-owned objects
+          // that only show in some chapters compile here, not on first entry)
+          this.world.update(this.frame, this.camera)
           this.renderer.setRenderTarget(rt)
           this.renderer.render(this.scene, this.camera)
         }

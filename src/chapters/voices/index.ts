@@ -8,7 +8,7 @@ import { FLOOR_H } from '../../kit/steel'
 import type { World } from '../../world/World'
 import { applySite, builtAt } from '../common'
 import { TENANT_SPOTS, bayOrigin, faceAxes, makeOffices, type Offices } from './offices'
-import { SIGN_W, SIGN_Y, makeSign, signFontsReady, type Sign } from './signs'
+import { SIGN_H, SIGN_W, SIGN_Y, makeSign, signFontsReady, type Sign } from './signs'
 import './voices.css'
 
 /*
@@ -98,6 +98,31 @@ const CAM = [
 
 /** 0 = landscape layout, 1 = portrait (mirrors voices.css) */
 const portraitK = (f: Frame) => clamp(remap(f.width / Math.max(1, f.height), 1.02, 0.86))
+
+/**
+ * The neighbouring tenants' signs never sit under the chrome's plates, the
+ * quote plate or the headline, nor half out of frame: a sign that comes
+ * within a few px of one (or loses more than a sliver to the frame edge)
+ * fades out over SIGN_FADE s, and back once it's clear. Hysteresis on both
+ * tests keeps the drone's hover from toggling it. Only the sign of the tenant
+ * on screen is exempt (its framing keeps it clear).
+ */
+const SIGN_GAP: [number, number] = [6, 18] // px: hide below the first once shown, show above the second
+const SIGN_OFF: [number, number] = [0.2, 0.1] // fraction outside the frame: hide above / show below
+const SIGN_FADE = 0.3
+const _sc = new THREE.Vector3()
+const _sr = new THREE.Vector3()
+const _sn = new THREE.Vector3()
+
+/** separation of two boxes in px (negative = overlapping) */
+function gapTo(ax0: number, ay0: number, ax1: number, ay1: number, bx0: number, by0: number, bx1: number, by1: number) {
+  return Math.max(bx0 - ax1, ax0 - bx1, by0 - ay1, ay0 - by1)
+}
+function overlap(ax0: number, ay0: number, ax1: number, ay1: number, bx0: number, by0: number, bx1: number, by1: number) {
+  const w = Math.min(ax1, bx1) - Math.max(ax0, bx0)
+  const h = Math.min(ay1, by1) - Math.max(ay0, by0)
+  return w > 0 && h > 0 ? w * h : 0
+}
 
 const UP = new THREE.Vector3(0, 1, 0)
 const _f = new THREE.Vector3()
@@ -213,7 +238,14 @@ export default function create(): Chapter {
   let introOn = false
   let stackH = -1
   let deferShow = 0
-  const lay = { safeTop: 90, plateRight: 520, plateTopMax: 500, w: 0, h: 0 }
+  const lay = { safeTop: 90, plateLeft: 24, plateRight: 520, plateBottom: 600, plateChrome: 80, plateTopMax: 500, w: 0, h: 0 }
+  /** the chrome's plates, flat x0 y0 x1 y1 (measured on resize and entry) */
+  const chromeRects: number[] = []
+  /** the headline plate while it is up */
+  const introRect = [0, 0, 0, 0]
+  /** each neighbour sign's fade (0..1); snapped for the first frames after entry */
+  const signVis = new Float32Array(N)
+  let signSnap = 0
 
   const pa = mkPose()
   const pb = mkPose()
@@ -369,10 +401,68 @@ export default function create(): Chapter {
     for (const c of cards) tallest = Math.max(tallest, c.h || c.root.offsetHeight)
     const bottom = plate.offsetTop + plate.offsetHeight
     lay.safeTop = intro.offsetTop
+    lay.plateLeft = plate.offsetLeft
     lay.plateRight = plate.offsetLeft + plate.offsetWidth
+    lay.plateBottom = bottom
+    lay.plateChrome = chrome
     lay.plateTopMax = bottom - (chrome + tallest)
     lay.w = window.innerWidth
     lay.h = window.innerHeight
+    introRect[0] = intro.offsetLeft
+    introRect[1] = intro.offsetTop
+    introRect[2] = intro.offsetLeft + intro.offsetWidth
+    introRect[3] = intro.offsetTop + intro.offsetHeight
+    measureChrome()
+  }
+
+  function measureChrome() {
+    chromeRects.length = 0
+    document.querySelectorAll<HTMLElement>('.chr .ch-plate, .chr .ch-cta').forEach(e => {
+      if (e.closest('.ch-menu')) return
+      const r = e.getBoundingClientRect()
+      if (r.width > 0 && r.height > 0) chromeRects.push(r.left, r.top, r.right, r.bottom)
+    })
+  }
+
+  /**
+   * Whether sign `i` may show: clear of every plate by a few px and (nearly)
+   * whole in frame. `was` = its current state (the thresholds have hysteresis).
+   */
+  function signClear(i: number, was: boolean, cam: THREE.Camera, W: number, H: number) {
+    const sg = signs[i]
+    faceAxes(TENANT_SPOTS[i].face, _sn, _sr)
+    // seen nearly edge-on round the corner it's a squeezed, unreadable word
+    _sc.copy(cam.position).sub(sg.mesh.position).normalize()
+    if (_sc.dot(_sn) < (was ? 0.3 : 0.4)) return false
+    let x0 = Infinity
+    let y0 = Infinity
+    let x1 = -Infinity
+    let y1 = -Infinity
+    for (let c = 0; c < 4; c++) {
+      _sc.copy(sg.mesh.position)
+        .addScaledVector(_sr, (c & 1 ? 0.5 : -0.5) * SIGN_W)
+        .addScaledVector(UP, (c & 2 ? 0.5 : -0.5) * SIGN_H)
+        .project(cam)
+      if (_sc.z > 1 || _sc.z < -1) return false // behind the camera / clipped
+      const x = (_sc.x * 0.5 + 0.5) * W
+      const y = (-_sc.y * 0.5 + 0.5) * H
+      if (x < x0) x0 = x
+      if (x > x1) x1 = x
+      if (y < y0) y0 = y
+      if (y > y1) y1 = y
+    }
+    const area = Math.max(1, (x1 - x0) * (y1 - y0))
+    if (1 - overlap(x0, y0, x1, y1, 0, 0, W, H) / area > SIGN_OFF[was ? 0 : 1]) return false
+    let gap = Infinity
+    for (let k = 0; k < chromeRects.length; k += 4) {
+      gap = Math.min(gap, gapTo(x0, y0, x1, y1, chromeRects[k], chromeRects[k + 1], chromeRects[k + 2], chromeRects[k + 3]))
+    }
+    if (shown >= 0 && shown < N) {
+      const top = lay.plateBottom - lay.plateChrome - (cards[shown].h || lay.plateBottom - lay.plateTopMax - lay.plateChrome)
+      gap = Math.min(gap, gapTo(x0, y0, x1, y1, lay.plateLeft, top, lay.plateRight, lay.plateBottom))
+    }
+    if (introOn) gap = Math.min(gap, gapTo(x0, y0, x1, y1, introRect[0], introRect[1], introRect[2], introRect[3]))
+    return gap > SIGN_GAP[was ? 0 : 1]
   }
 
   function applyStackHeight(snap = false) {
@@ -471,7 +561,10 @@ export default function create(): Chapter {
 
     onEnter() {
       sinkAll()
+      measure()
       deferShow = 1
+      // the first frame still projects through the last chapter's camera
+      signSnap = 3
     },
 
     onLeave() {
@@ -492,6 +585,7 @@ export default function create(): Chapter {
       wp.fog = 1
 
       /* ---- the offices: lit floor by floor ---- */
+      if (signSnap > 0) signSnap--
       if (offices) {
         const glazedNow = ctx.world.tower.frontier / FLOOR_H - 6
         const cascade = smoothstep(CASCADE[0], CASCADE[1], local)
@@ -507,10 +601,17 @@ export default function create(): Chapter {
         u.uInterior.value = lerp(0.44, 0.54, local) * (1 + 0.45 * cascade)
         for (let i = 0; i < signs.length; i++) {
           const sp = TENANT_SPOTS[i]
-          const on = smoothstep(sp.floor + 0.02, sp.floor + 0.14, lit)
           const sg = signs[i]
-          sg.setOpacity(Math.round(on * 100) / 100)
           sg.mesh.position.x = sg.mesh.userData.x0 + ctx.world.tower.swayAt(sg.mesh.position.y)
+          let on = smoothstep(sp.floor + 0.02, sp.floor + 0.14, lit)
+          // the tenant on screen keeps its sign; a neighbour's shows only
+          // where it sits whole and clear of the plates (never a cut word)
+          const want = on > 0 && signClear(i, signVis[i] > 0.5, ctx.camera, frame.width, frame.height) ? 1 : 0
+          signVis[i] = signSnap > 0 ? want : signVis[i] + clamp(want - signVis[i], -frame.dt / SIGN_FADE, frame.dt / SIGN_FADE)
+          // (exempt only as the drone settles on it: mid-glide it obeys the guard too)
+          const focus = 1 - clamp((Math.abs(s - i) - 0.04) * 8)
+          on *= Math.max(focus, signVis[i])
+          sg.setOpacity(Math.round(on * 100) / 100)
         }
       }
 

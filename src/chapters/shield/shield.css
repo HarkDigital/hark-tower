@@ -1,6 +1,6 @@
 /* Wind Load — "Hacked? Breathe." Every selector scoped under .stage-shield. */
 
-/* a soft graphite falloff behind the copy column (the squall sky is bright at the horizon) */
+/* a soft graphite falloff behind the copy column (the sky is bright at the horizon) */
 .stage-shield .sh-scrim {
   position: absolute;
   inset: 0;
@@ -41,6 +41,10 @@
   font-size: clamp(3.2rem, 8.4vw, 8.8rem);
   /* a tight shadow: a wide blur would be clipped into boxes by the hoisted-word masks */
   text-shadow: 0 1px 2px rgba(8, 10, 14, 0.4);
+}
+/* the headline's two beats, one per line: 'Hacked?' first, 'Breathe.' later */
+.stage-shield .sh-t {
+  display: block;
 }
 .stage-shield .sh-plate {
   max-width: min(470px, 38vw);
@@ -101,6 +105,78 @@
 }
 .stage-shield .sh-cta {
   margin-top: 6px;
+}
+
+/* ---------- the analysis colour key (Cp) ---------- */
+
+.stage-shield .sh-key {
+  position: absolute;
+  left: var(--gutter);
+  bottom: var(--safe-bottom);
+  width: min(300px, 30vw);
+  display: grid;
+  gap: 6px;
+  padding: 9px 12px 8px;
+  background: rgba(16, 19, 23, 0.84);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.stage-shield .sh-key-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+.stage-shield .sh-key-head .hud-label {
+  font-size: 10.5px;
+  color: var(--fg);
+}
+.stage-shield .sh-key-u {
+  text-transform: none;
+  letter-spacing: 0.04em;
+}
+.stage-shield .sh-key-bar {
+  position: relative;
+  height: 9px;
+  box-shadow: 0 0 0 1px rgba(8, 10, 14, 0.6);
+}
+.stage-shield .sh-key-ticks {
+  position: relative;
+  height: 13px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  line-height: 13px;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+.stage-shield .sh-key-ticks span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+}
+.stage-shield .sh-key-ticks span:first-child {
+  transform: none;
+}
+.stage-shield .sh-key-ticks span:last-child {
+  transform: translateX(-100%);
+}
+.stage-shield .sh-key-ends {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(244, 241, 234, 0.7);
+}
+.stage-shield .sh-key-ends span:first-child {
+  color: #8fd6ff;
+}
+.stage-shield .sh-key-ends span:last-child {
+  color: #ff8a4a;
 }
 
 /* ---------- drawing annotations pinned to the tower ---------- */
@@ -181,6 +257,11 @@
 /* ---------- portrait: the scene up top, the copy below ---------- */
 
 @media (orientation: portrait) {
+  .stage-shield .sh-key {
+    top: var(--safe-top);
+    bottom: auto;
+    width: min(270px, calc(100vw - 2 * var(--gutter)));
+  }
   .stage-shield .sh-scrim {
     background: linear-gradient(0deg, rgba(10, 12, 15, 0.6) 0%, rgba(10, 12, 15, 0.36) 34%, rgba(10, 12, 15, 0) 60%);
   }

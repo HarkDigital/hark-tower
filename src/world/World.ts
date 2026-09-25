@@ -1,9 +1,9 @@
 import * as THREE from 'three'
 import type { Frame } from '../core/types'
-import { Tower, CROWN_Y, CROWN_H } from './tower'
+import { Tower, CROWN_Y, CROWN_H, type TowerState } from './tower'
 import { Crane, MAST_H } from './crane'
 import { City } from './city'
-import { Frontier } from './frontier'
+import { Frontier, type FrontierState } from './frontier'
 import { Site } from './site'
 import { FLOORS, FLOOR_H } from '../kit/steel'
 
@@ -22,8 +22,11 @@ import { FLOORS, FLOOR_H } from '../kit/steel'
  *    params.crane {yaw, reach 0..1, drop metres}; world.crane.hookWorld.
  *  - THE FRONTIER (src/world/frontier.ts): the working top of the steel —
  *    plank decking, edge protection, the raising gang, beam bundles, the
- *    jump-form rig, the construction hoist, sodium work lights (on at dawn and
- *    from golden hour), sparks at the bolt-up points (params.activity).
+ *    jump-form rig, the construction hoist, sodium work lights (dimmed at
+ *    dawn, full from golden hour; params.worklights scales them), sparks at
+ *    the bolt-up points (params.activity).
+ *  - STEEL SETTLES: pieces being placed hang above / outside their seats only
+ *    while the build is catching up with the scroll; at rest all are seated.
  *  - THE SITE (src/world/site.ts): hoarding with the Hark graphic, site
  *    office, laydown yard, trucks, crew; street trees, cars, street lights.
  *    A chapter that stages its own ground site sets params.site = 0 every
@@ -32,7 +35,8 @@ import { FLOORS, FLOOR_H } from '../kit/steel'
  *  - THE SUN walks round the tower through the day (per-keyframe azimuth):
  *    dawn behind it, morning front-left (main face lit), golden hour
  *    front-right (both visible faces warm), sunset behind-right; blue hour
- *    and night after. Reflections include a far skyline ring.
+ *    and night after. Reflections include a far skyline and the city below
+ *    under the haze (warm at golden hour, lit streets at night).
  *
  * Chapters set world.params every frame they care; the engine resets them to
  * defaults first; values are damped (so cuts never pop and the tower builds
@@ -127,6 +131,18 @@ const KEYS: Key[] = [
   { t: 1, zenith: '#040815', horizon: '#15203f', sunEl: -14, az: -6.3, sun: '#8ea4e0', sunI: 0.42, sky: '#27365f', ground: '#15171f', hemiI: 0.42, fog: '#352f45', fogD: 0.0009, lights: 1, cloud: 0.4, band: 0.1, glow: '#1b2442' },
 ]
 
+/** KEYS with every colour pre-parsed (linear), so a frame never parses a hex string. */
+type KeyColors = { zenith: THREE.Color; horizon: THREE.Color; sun: THREE.Color; glow: THREE.Color; sky: THREE.Color; ground: THREE.Color; fog: THREE.Color }
+const KC: KeyColors[] = KEYS.map(k => ({
+  zenith: new THREE.Color(k.zenith),
+  horizon: new THREE.Color(k.horizon),
+  sun: new THREE.Color(k.sun),
+  glow: new THREE.Color(k.glow ?? k.sun),
+  sky: new THREE.Color(k.sky),
+  ground: new THREE.Color(k.ground),
+  fog: new THREE.Color(k.fog),
+}))
+
 export const WORLD_DEFAULTS = {
   time: 0.3,
   built: 0,
@@ -197,32 +213,76 @@ const SKY_FRAG = /* glsl */ `
 `
 
 /*
- * A far skyline ring for the reflection captures only: the curtain wall and
- * the city glass reflect building silhouettes (hazed by the fog colour, lit
- * windows at night) below the horizon instead of a flat fog colour.
+ * The lower half of the world for the reflection captures only: a far
+ * skyline on the horizon, and below it the city under the haze. From the
+ * frontier's heights most of what a curtain wall reflects is BELOW the
+ * horizon, so this is what the glass shows: the warm horizon haze at golden
+ * hour (brightest toward the sun), the darker city by day (the blue sky above
+ * is what the glass shows then), street lights at night. The city is drawn as
+ * seen from ~120 m up: lots in sun and shade, streets, fading into the haze
+ * with distance, so a pane's slight tilt shows a different part of it than
+ * its neighbour's.
  */
 const SKYLINE_FRAG = /* glsl */ `
-  uniform vec3 uFogColor, uHorizon;
+  uniform vec3 uFogColor, uHorizon, uGlowColor, uSunDir, uZenith;
   uniform float uNight, uLights;
   varying vec3 vDir;
   float hash(float n) { return fract(sin(n) * 43758.5453); }
+  float hash2(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
   void main() {
     vec3 d = normalize(vDir);
     float a = atan(d.z, d.x);
     float el = asin(clamp(d.y, -1.0, 1.0));
-    // two layers of buildings: near (wide, taller) and far (narrow, lower)
+    // two layers of buildings on the horizon: near (wide, taller) and far (narrow, lower)
     float c1 = floor(a * 22.0);
     float c2 = floor(a * 61.0);
     float h1 = 0.012 + 0.07 * pow(hash(c1 * 1.7), 2.5);
     float h2 = 0.005 + 0.03 * hash(c2 * 3.1);
     float top = max(h1, h2);
     if (el > top) discard;
-    float near = step(h2, h1);
-    vec3 base = mix(uFogColor * 0.62, uFogColor * 0.4 + uHorizon * 0.06, near);
-    // windows at night
+    // the haze: the fog warmed by the horizon, brighter on the sun's side
+    vec2 sxz = normalize(uSunDir.xz + vec2(1e-4, 0.0));
+    float toSun = dot(normalize(d.xz + vec2(1e-4, 0.0)), sxz) * 0.5 + 0.5;
+    float day = 1.0 - uNight;
+    // warm keys (dawn, golden hour, sunset) lift the whole lower half toward the
+    // horizon glow, so glass seen from above still mirrors it; by day it stays
+    // as it was (dark city, the blue sky above is what the glass shows)
+    float warm = clamp((uHorizon.r - uHorizon.b) * 1.6, 0.0, 1.0) * day;
+    vec3 haze = mix(uFogColor, uHorizon, mix(0.45, 0.72, warm) * day) + uGlowColor * (0.3 * toSun * toSun * day);
+    // skyline silhouettes: darker than the sky (they read as a reflection), hazier when warm
+    float nearL = step(h2, h1);
+    vec3 sil = mix(mix(uFogColor * 0.62, uFogColor * 0.4 + uHorizon * 0.06, nearL), haze * mix(0.66, 0.56, nearL), warm);
+    // below: the city seen from ~120 m up (streets, rooftops, lots), fading
+    // into the haze with distance; a pane's slight tilt shows a different part
+    // of it than its neighbour's (a mirror, not paint)
+    float dn = max(-el, 0.0);
+    vec2 gp = d.xz / max(-d.y, 0.015) * 120.0;
+    float gd = length(gp);
+    vec2 sc = abs(fract(gp / 48.0) - 0.5) * 48.0;
+    float street = 1.0 - smoothstep(4.0, 6.5, min(sc.x, sc.y));
+    // lots: each block split its own way (no checkerboard)
+    vec2 blkId = floor(gp / 48.0);
+    vec2 lot = floor((gp + vec2(hash2(blkId), hash2(blkId + 2.0)) * 11.0) / mix(9.0, 21.0, hash2(blkId + 5.0))) + blkId * 7.0;
+    float roof = hash2(lot + 3.0);
+    float lit = 1.0 - smoothstep(0.0, 1.0, abs(hash2(lot + 11.0) - 0.5) * 12.0);
+    // roofs in the low sun (warm) and in shadow (the sky's blue), streets in shade
+    vec3 litRoof = uFogColor * mix(mix(0.4, 0.62, warm), 0.2, uNight) * (0.72 + 0.56 * roof) + uGlowColor * 0.14 * warm * roof;
+    vec3 shadeRoof = mix(uFogColor * 0.4, uZenith * 0.9 + uFogColor * 0.22, 0.55 * day) * (0.8 + 0.4 * roof);
+    vec3 below = mix(litRoof, shadeRoof, step(0.55, hash2(lot + 17.0)) * 0.65);
+    below = mix(below, mix(uFogColor * 0.26, uZenith * 0.5 + uFogColor * 0.1, 0.5 * day) * mix(1.0, 0.55, uNight), street * 0.85);
+    float far = 1.0 - exp(-gd / mix(1500.0, 1100.0, warm));
+    below = mix(below, mix(uFogColor * 0.55, mix(sil, haze, 0.55), warm), far);
+    // a thin bright band right under the horizon line (the haze at the far edge)
+    below = mix(below, haze, exp(-dn / 0.025) * mix(0.35, 0.85, warm));
+    vec3 col = el > 0.0 ? sil : below;
+    // windows at night: the skyline's; below, street lights along every street
+    // and the odd lit roof-light (coarse enough to survive the PMREM)
     vec2 w = vec2(a * 900.0, el * 900.0);
     float win = step(0.62, hash(floor(w.x) * 7.1 + floor(w.y) * 13.7)) * step(0.3, fract(w.x)) * step(0.4, fract(w.y));
-    vec3 col = base + vec3(1.0, 0.78, 0.5) * win * uLights * 0.9;
+    vec2 lp = abs(fract(gp / 24.0) - 0.5) * 24.0;
+    float lamps = street * (1.0 - smoothstep(1.5, 5.0, min(lp.x, lp.y))) + (1.0 - street) * lit * step(0.8, roof);
+    float lights = el > 0.0 ? win * 0.9 : lamps * 1.4 * (1.0 - far * 0.6) * smoothstep(0.004, 0.03, dn);
+    col += vec3(1.0, 0.72, 0.42) * lights * uLights;
     gl_FragColor = vec4(col, 1.0);
   }
 `
@@ -244,7 +304,7 @@ export class World {
     focus: new THREE.Vector3(0, 0, 0),
   }
   /** the crane's smoothed pose this frame (what's drawn) */
-  cranePose = { yaw: 0.6, reach: 0.55, drop: 18 }
+  cranePose = { yaw: 0.6, reach: 0.55, drop: 18, away: 0 }
   private cur = {
     time: WORLD_DEFAULTS.time,
     built: 0,
@@ -284,8 +344,27 @@ export class World {
   private pmrem: THREE.PMREMGenerator | null = null
   private fog: THREE.FogExp2
   private tmpV = new THREE.Vector3()
-  private tmpA = new THREE.Color()
-  private tmpB = new THREE.Color()
+  /** 0..1: the steel / curtain wall still catching up with the scroll (pieces settle as it falls to 0) */
+  private motion = 0
+  /** persistent per-frame inputs for the tower and the frontier (no per-frame allocation) */
+  private towerState: Required<TowerState> = {
+    sway: 0,
+    swayPhase: 0,
+    built: 0,
+    glazed: 0,
+    fitted: 0,
+    ghost: 1,
+    crown: 0,
+    night: 0,
+    camToCrown: 200,
+    motion: 0,
+    horizon: new THREE.Color(),
+    sunDir: new THREE.Vector3(0, 1, 0),
+    sunColor: new THREE.Color(),
+    sky: 1,
+    warm: 0,
+  }
+  private frontierState: FrontierState
 
   constructor(
     private scene: THREE.Scene,
@@ -308,8 +387,9 @@ export class World {
     // the env-capture scene uses the same sky material (clouds and all)
     const envDome = new THREE.Mesh(new THREE.SphereGeometry(50, 32, 16), skyMat)
     this.envScene.add(envDome)
+    // (a full sphere inside the dome: it discards above the skyline)
     const skyline = new THREE.Mesh(
-      new THREE.CylinderGeometry(40, 40, 60, 64, 1, true).translate(0, -26, 0),
+      new THREE.SphereGeometry(45, 64, 32),
       new THREE.ShaderMaterial({ side: THREE.BackSide, uniforms: this.skyU, vertexShader: SKY_VERT, fragmentShader: SKYLINE_FRAG }),
     )
     this.envScene.add(skyline)
@@ -348,6 +428,18 @@ export class World {
     scene.add(this.site.root)
 
     if (renderer) this.pmrem = new THREE.PMREMGenerator(renderer)
+    const tower = this.tower
+    this.frontierState = {
+      built: 0,
+      coreTop: 0,
+      lights: 0,
+      hoist: true,
+      activity: 1,
+      calm: false,
+      time: 0,
+      dt: 0,
+      swayAt: (y: number) => tower.swayAt(y),
+    }
   }
 
   resetParams() {
@@ -373,19 +465,23 @@ export class World {
     p.focus.set(0, this.tower.frontier, 0)
   }
 
-  /** Sample the keyframes at t (0..1). */
+  /** keyframe sample (persistent, filled by sample()): keys a → b at k */
+  private sa = KEYS[0]
+  private sb = KEYS[1]
+  private sca = KC[0]
+  private scb = KC[1]
+  private sk = 0
+
+  /** Sample the keyframes at t (0..1) into sa/sb/sca/scb/sk. */
   private sample(t: number) {
     t = THREE.MathUtils.clamp(t, 0, 1)
     let i = 0
     while (i < KEYS.length - 2 && t > KEYS[i + 1].t) i++
-    const a = KEYS[i]
-    const b = KEYS[i + 1]
-    const k = THREE.MathUtils.smoothstep(t, a.t, b.t)
-    return { a, b, k }
-  }
-
-  private mixColor(out: THREE.Color, a: string, b: string, k: number) {
-    return out.copy(this.tmpA.set(a)).lerp(this.tmpB.set(b), k)
+    this.sa = KEYS[i]
+    this.sb = KEYS[i + 1]
+    this.sca = KC[i]
+    this.scb = KC[i + 1]
+    this.sk = THREE.MathUtils.smoothstep(t, KEYS[i].t, KEYS[i + 1].t)
   }
 
   /**
@@ -396,7 +492,7 @@ export class World {
     this.envFor(t, 0)
   }
 
-  /** Capture the sky (+ skyline ring) at keyframe `idx` into a PMREM. */
+  /** Capture the sky (+ skyline and city below) at keyframe `idx` into a PMREM. */
   private buildEnv(idx: number) {
     if (!this.pmrem || this.envMaps[idx]) return
     const saved = this.skyState(idx / ENV_STEPS)
@@ -416,24 +512,36 @@ export class World {
       this.buildEnv(idx)
       this.envIndex = idx
       this.scene.environment = this.envMaps[idx]
-    } else if (time > 1.2) {
-      const next = this.envMaps.findIndex(m => !m)
+    } else if (time > 1.2 && this.envPending) {
+      let next = -1
+      for (let i = 0; i < this.envMaps.length; i++)
+        if (!this.envMaps[i]) {
+          next = i
+          break
+        }
       if (next >= 0) this.buildEnv(next)
+      else this.envPending = false
     }
   }
+  private envPending = true
 
   /** Apply the sky uniforms for time t; returns the previous time for restoring. */
   private lastSkyT = 0
   private skyState(t: number) {
     const prev = this.lastSkyT
     this.lastSkyT = t
-    const { a, b, k } = this.sample(t)
+    this.sample(t)
+    const a = this.sa
+    const b = this.sb
+    const ca = this.sca
+    const cb = this.scb
+    const k = this.sk
     const u = this.skyU
-    this.mixColor(u.uZenith.value, a.zenith, b.zenith, k)
-    this.mixColor(u.uHorizon.value, a.horizon, b.horizon, k)
-    this.mixColor(u.uSunColor.value, a.sun, b.sun, k)
-    this.mixColor(u.uGlowColor.value, a.glow ?? a.sun, b.glow ?? b.sun, k)
-    this.mixColor(u.uFogColor.value, a.fog, b.fog, k)
+    u.uZenith.value.copy(ca.zenith).lerp(cb.zenith, k)
+    u.uHorizon.value.copy(ca.horizon).lerp(cb.horizon, k)
+    u.uSunColor.value.copy(ca.sun).lerp(cb.sun, k)
+    u.uGlowColor.value.copy(ca.glow).lerp(cb.glow, k)
+    u.uFogColor.value.copy(ca.fog).lerp(cb.fog, k)
     const el = THREE.MathUtils.degToRad(THREE.MathUtils.lerp(a.sunEl, b.sunEl, k))
     // the sun walks round the tower (see the keys): behind at dawn, front-left
     // in the morning, front-right at golden hour, sets behind-right
@@ -459,6 +567,13 @@ export class World {
     if (Math.abs(p.built - c.built) < 0.02) c.built = p.built
     c.glazed += (p.glazed - c.glazed) * kb
     c.fitted += (p.fitted - c.fitted) * kb
+    if (Math.abs(p.glazed - c.glazed) < 0.02) c.glazed = p.glazed
+    if (Math.abs(p.fitted - c.fitted) < 0.02) c.fitted = p.fitted
+    // pieces only hang above / outside their seats while the build is moving;
+    // once the scroll rests they settle (nothing hovers at rest)
+    const lag = Math.max(Math.abs(p.built - c.built), Math.abs(p.glazed - c.glazed))
+    const moving = THREE.MathUtils.smoothstep(lag, 0.0, 0.05)
+    this.motion += (moving - this.motion) * (moving > this.motion ? 1 : k)
     c.ghost += (p.ghost - c.ghost) * k
     c.crown += (p.crown - c.crown) * k
     c.fog += (p.fog - c.fog) * k
@@ -472,26 +587,30 @@ export class World {
     c.yaw += dy * k
     c.reach += (p.crane.reach - c.reach) * k
     c.drop += (p.crane.drop - c.drop) * k
+    c.away += (p.crane.away - c.away) * kb
     if (p.crane.snap) {
       c.yaw = p.crane.yaw
       c.reach = p.crane.reach
       c.drop = p.crane.drop
+      c.away = p.crane.away
     }
-    c.away += (p.crane.away - c.away) * kb
     c.worklights += (p.worklights - c.worklights) * k
     this.cranePose.yaw = c.yaw
     this.cranePose.reach = c.reach
     this.cranePose.drop = c.drop
+    this.cranePose.away = c.away
 
     // sky + lights for the time of day
     this.skyState(c.time)
-    const { a, b, k: kk } = this.sample(c.time)
+    const a = this.sa
+    const b = this.sb
+    const kk = this.sk
     const u = this.skyU
     u.uTime.value = frame.time
     this.sun.color.copy(u.uSunColor.value)
     this.sun.intensity = THREE.MathUtils.lerp(a.sunI, b.sunI, kk)
-    this.mixColor(this.hemi.color, a.sky, b.sky, kk)
-    this.mixColor(this.hemi.groundColor, a.ground, b.ground, kk)
+    this.hemi.color.copy(this.sca.sky).lerp(this.scb.sky, kk)
+    this.hemi.groundColor.copy(this.sca.ground).lerp(this.scb.ground, kk)
     this.hemi.intensity = THREE.MathUtils.lerp(a.hemiI, b.hemiI, kk)
     this.fog.color.copy(u.uFogColor.value)
     this.fog.density = THREE.MathUtils.lerp(a.fogD, b.fogD, kk) * c.fog
@@ -505,9 +624,27 @@ export class World {
 
     // the tower
     const night = u.uNight.value
+    const ts = this.towerState
+    ts.sway = c.sway
+    ts.swayPhase = c.swayPhase
+    ts.built = c.built
+    ts.glazed = c.glazed
+    ts.fitted = c.fitted
+    ts.ghost = c.ghost
+    ts.crown = c.crown
+    ts.night = night
+    ts.camToCrown = camera.position.distanceTo(this.tmpV.set(0, CROWN_Y + CROWN_H / 2, 0))
+    ts.motion = this.motion
+    // the curtain wall's sky: the horizon it mirrors at grazing angles, the
+    // sun it glints (only while the sun is up), scaled down after dark
+    ts.horizon.copy(u.uHorizon.value)
+    ts.sunDir.copy(u.uSunDir.value)
+    ts.sunColor.copy(u.uSunColor.value).multiplyScalar((this.sun.intensity / 3.3) * THREE.MathUtils.smoothstep(u.uSunDir.value.y, -0.01, 0.07))
+    ts.sky = c.env * (1 - night * 0.7)
+    const hz = u.uHorizon.value
+    ts.warm = THREE.MathUtils.clamp((hz.r - hz.b) * 1.6, 0, 1) * (1 - night)
     // (reduced motion: the blueprint's scan line holds still)
-    const camToCrown = camera.position.distanceTo(this.tmpV.set(0, CROWN_Y + CROWN_H / 2, 0))
-    this.tower.update({ sway: c.sway, swayPhase: c.swayPhase, built: c.built, glazed: c.glazed, fitted: c.fitted, ghost: c.ghost, crown: c.crown, night, camToCrown }, frame.reducedMotion ? 4 : frame.time)
+    this.tower.update(ts, frame.reducedMotion ? 4 : frame.time)
 
     // the crane rides the core, two floors above the steel (hidden once the crown lights)
     const coreTop = Math.min(FLOORS, c.built + 2) * FLOOR_H
@@ -519,23 +656,20 @@ export class World {
     this.crane.set(c.yaw, c.reach, c.drop)
     this.crane.update(frame.dt, frame.time, night, frame.reducedMotion)
 
-    // the working frontier: work lights at dawn and from golden hour on
+    // the working frontier: work lights at dawn (dimmed: the dawn close-ups
+    // are low and near, where full sodium glares) and from golden hour on
     const t = c.time
-    const work = Math.max(1 - THREE.MathUtils.smoothstep(t, 0.04, 0.13), THREE.MathUtils.smoothstep(t, 0.6, 0.73))
-    this.frontier.update(
-      {
-        built: c.built,
-        coreTop,
-        lights: work * c.worklights,
-        hoist: p.hoist > 0.5,
-        activity: c.activity,
-        calm: frame.reducedMotion,
-        time: frame.time,
-        dt: frame.dt,
-        swayAt: y => this.tower.swayAt(y),
-      },
-      this.renderer?.domElement.height ?? frame.height,
-    )
+    const work = Math.max(0.55 * (1 - THREE.MathUtils.smoothstep(t, 0.04, 0.13)), THREE.MathUtils.smoothstep(t, 0.6, 0.73))
+    const fs = this.frontierState
+    fs.built = c.built
+    fs.coreTop = coreTop
+    fs.lights = work * c.worklights
+    fs.hoist = p.hoist > 0.5
+    fs.activity = c.activity
+    fs.calm = frame.reducedMotion
+    fs.time = frame.time
+    fs.dt = frame.dt
+    this.frontier.update(fs, this.renderer?.domElement.height ?? frame.height)
 
     // sun + shadow frustum centred on the focus point
     const sd = u.uSunDir.value

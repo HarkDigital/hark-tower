@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { MAT, T, TOWER_W, iBeamGeometry, mergeAll, personGeometry, tint } from '../kit/steel'
+import { MAT, T, TC, TOWER_W, iBeamGeometry, mergeAll, personGeometry, tint } from '../kit/steel'
 import { logoOutlines } from '../logo/logo'
 import { BRAND, MICROCOPY } from '../content'
 import { inPlaza } from './city'
@@ -16,8 +16,10 @@ import { inPlaza } from './city'
  *  - the site office (stacked portacabins + stair), storage containers, the
  *    steel laydown yard (beam bundles, deck packs), a mixer truck at the gate,
  *    a delivery flatbed, and a ground crew for scale
- *  - outside: street trees, the square's trees, parked cars, street-light
- *    heads that glow at night (lights 0..1)
+ *  - rebar bundles on dunnage, a spoil heap and a gravel pile, welfare units
+ *  - outside: street trees (thin trunks and limbs under a sparse leaf canopy,
+ *    not lollipops), the square's trees, parked sedans and SUVs with real
+ *    profiles, street-light heads that glow at night (lights 0..1)
  *
  * Static and merged by material (a handful of draw calls; frustum-culled).
  * `onSite` (inside the hoarding, and the hoarding) hides when a chapter sets
@@ -134,6 +136,203 @@ function wallQuad(a: THREE.Vector2, b: THREE.Vector2, h: number, flip: boolean, 
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2))
   g.computeVertexNormals()
   return g
+}
+
+/** A leaf-cluster texture for the tree canopies (alpha-tested cards), plus an opaque white patch in the top-left corner for the bark. */
+function leafTexture() {
+  const S = 256
+  const c = document.createElement('canvas')
+  c.width = c.height = S
+  const g = c.getContext('2d')!
+  let seed = 23
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647)
+  // bark patch (uv ≈ 0.03, 0.97)
+  g.fillStyle = '#ffffff'
+  g.fillRect(0, 0, 16, 16)
+  // a loose cluster: small leaves, denser toward the middle, gaps between
+  for (let i = 0; i < 520; i++) {
+    const a = rnd() * Math.PI * 2
+    const r = Math.sqrt(rnd()) * 104
+    const x = 128 + Math.cos(a) * r
+    const y = 128 + Math.sin(a) * r * 0.92
+    if (rnd() < (r / 104) * 0.45) continue
+    const hue = 78 + rnd() * 34
+    const sat = 22 + rnd() * 22
+    const lit = 20 + rnd() * 24 + (1 - r / 104) * -4
+    g.fillStyle = `hsl(${hue.toFixed(0)}, ${sat.toFixed(0)}%, ${lit.toFixed(0)}%)`
+    g.beginPath()
+    g.ellipse(x, y, 3.5 + rnd() * 4.5, 2.2 + rnd() * 2.6, rnd() * Math.PI, 0, Math.PI * 2)
+    g.fill()
+  }
+  const t = new THREE.CanvasTexture(c)
+  t.colorSpace = THREE.SRGBColorSpace
+  t.anisotropy = 4
+  return t
+}
+
+/**
+ * A street tree at real scale: a thin trunk forking into a few limbs, under a
+ * sparse canopy of leaf cards (both faces, normals bent round the canopy so it
+ * shades as a volume). Vertex colours: white leaves (the texture carries the
+ * greens), grey-brown bark (on the texture's white patch).
+ */
+function treeGeometry(seed: number, o: { height: number; spread: number; cards: number }) {
+  let s = seed
+  const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647)
+  const parts: THREE.BufferGeometry[] = []
+  const bark = '#5d554b'
+  const barkUv = (g: THREE.BufferGeometry) => {
+    const uv = g.attributes.uv as THREE.BufferAttribute
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, 0.03, 0.97)
+    return g
+  }
+  const H = o.height
+  const fork = H * 0.42
+  parts.push(tint(barkUv(new THREE.CylinderGeometry(0.075, 0.13, fork + 0.4, 6).translate(0, (fork + 0.4) / 2, 0)), bark))
+  const up = new THREE.Vector3(0, 1, 0)
+  const limbs = 3 + Math.floor(rnd() * 2)
+  for (let i = 0; i < limbs; i++) {
+    const a = (i / limbs) * Math.PI * 2 + rnd() * 0.8
+    const tilt = 0.35 + rnd() * 0.3
+    const len = H * (0.34 + rnd() * 0.12)
+    const dir = new THREE.Vector3(Math.sin(tilt) * Math.cos(a), Math.cos(tilt), Math.sin(tilt) * Math.sin(a))
+    const g = new THREE.CylinderGeometry(0.022, 0.06, len, 5).translate(0, len / 2, 0)
+    g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(up, dir))
+    parts.push(tint(barkUv(g.translate(0, fork, 0)), bark))
+  }
+  // the canopy: cards scattered through an ellipsoid, more toward its shell
+  const cy = H * 0.66
+  const R = new THREE.Vector3(o.spread, H * 0.27, o.spread)
+  const centre = new THREE.Vector3(0, cy, 0)
+  const q = new THREE.Quaternion()
+  const e = new THREE.Euler()
+  for (let i = 0; i < o.cards; i++) {
+    const u = rnd() * 2 - 1
+    const ph = rnd() * Math.PI * 2
+    const rr = 0.45 + 0.55 * Math.sqrt(rnd())
+    const sq = Math.sqrt(1 - u * u)
+    const p = new THREE.Vector3(sq * Math.cos(ph) * R.x * rr, u * R.y * rr, sq * Math.sin(ph) * R.z * rr).add(centre)
+    const size = 1.2 + rnd() * 0.9
+    const card = new THREE.PlaneGeometry(size, size * 0.9)
+    const uv = card.attributes.uv as THREE.BufferAttribute
+    for (let k = 0; k < uv.count; k++) uv.setXY(k, 0.08 + uv.getX(k) * 0.84, 0.08 + uv.getY(k) * 0.84)
+    const back = card.clone().rotateY(Math.PI)
+    const both = mergeAll([card, back])
+    // (a third lie nearly flat, so the canopy also reads from above)
+    e.set(rnd() < 0.34 ? Math.PI / 2 + (rnd() - 0.5) * 0.7 : (rnd() - 0.5) * 1.3, rnd() * Math.PI * 2, (rnd() - 0.5) * 0.6)
+    both.applyQuaternion(q.setFromEuler(e))
+    both.translate(p.x, p.y, p.z)
+    // normals bent outward from the canopy centre (+ a little sky): soft, volumetric shading
+    const pos = both.attributes.position as THREE.BufferAttribute
+    const nor = both.attributes.normal as THREE.BufferAttribute
+    const n = new THREE.Vector3()
+    for (let k = 0; k < pos.count; k++) {
+      n.set((pos.getX(k) - centre.x) / R.x, (pos.getY(k) - centre.y) / R.y, (pos.getZ(k) - centre.z) / R.z).normalize()
+      n.y += 0.35
+      n.normalize()
+      nor.setXYZ(k, n.x, n.y, n.z)
+    }
+    parts.push(tint(both, '#ffffff'))
+  }
+  return mergeAll(parts)
+}
+
+/**
+ * A vehicle body part from its side profile: points (u along the length,
+ * v height) extruded across `width` (centred on x) with bevelled edges; the
+ * profile's +u ends up toward -z. Vertex-tinted.
+ */
+function extrudeSide(pts: [number, number][], width: number, color: string, bevel = 0.05) {
+  const sh = new THREE.Shape(pts.map(([u, v]) => new THREE.Vector2(u, v)))
+  const g = new THREE.ExtrudeGeometry(sh, { depth: width - 2 * bevel, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 2, curveSegments: 4 })
+  g.rotateY(Math.PI / 2)
+  g.translate(-(width - 2 * bevel) / 2, 0, 0)
+  return tint(g, color)
+}
+
+/**
+ * A site truck, front toward +z: chassis rails, a profiled cab (raked
+ * windscreen, side glass, grille, bumper, lamps, mirrors), fuel tank, front
+ * wheels under fenders and a rear tandem; a flatbed with a headboard, or a
+ * mixer drum with its water tank and chute.
+ */
+function truckGeometry(mixer: boolean, paint: string) {
+  const L = mixer ? 8.5 : 13
+  const zf = L / 2
+  const parts: THREE.BufferGeometry[] = []
+  const dark = '#23272d'
+  const box = (w: number, h: number, d: number, x: number, y: number, z: number, c: string) => parts.push(tint(new THREE.BoxGeometry(w, h, d).translate(x, y, z), c))
+  // chassis
+  box(1.1, 0.34, L - 0.3, 0, 0.85, -0.1, dark)
+  // cab: side profile, flipped so its front faces +z
+  const cab = mergeAll([
+    extrudeSide([[0, 1.0], [2.35, 1.0], [2.38, 1.85], [2.1, 2.85], [0.05, 2.95], [0, 2.9]], 2.45, paint),
+    extrudeSide([[1.0, 1.95], [2.36, 1.95], [2.12, 2.74], [1.0, 2.76]], 2.5, '#1b2229', 0.02),
+  ])
+  cab.rotateY(Math.PI)
+  cab.translate(0, 0, zf - 2.38)
+  parts.push(cab)
+  box(2.5, 0.32, 0.22, 0, 0.82, zf + 0.04, '#3a4046')
+  box(1.5, 0.75, 0.04, 0, 1.45, zf + 0.02, '#15181b')
+  for (const x of [-0.95, 0.95]) {
+    box(0.34, 0.16, 0.05, x, 1.12, zf + 0.03, '#e8e6df')
+    box(0.08, 0.34, 0.2, x * 1.42, 2.25, zf - 0.35, '#15181b')
+    box(0.55, 0.08, 1.3, x * 1.1, 1.12, zf - 1.3, '#15181b')
+  }
+  parts.push(tint(new THREE.CylinderGeometry(0.3, 0.3, 1.1, 10).rotateX(Math.PI / 2).translate(1.0, 0.8, zf - 3.1), '#8b949c'))
+  // wheels: steer axle under the cab, a rear tandem (wide: reads as duals)
+  const rear = mixer ? [-2.8, -1.4] : [-zf + 1.6, -zf + 2.95]
+  for (const zz of [zf - 1.3, ...rear])
+    for (const xx of [-1.0, 1.0])
+      parts.push(tint(new THREE.CylinderGeometry(0.52, 0.52, zz > 0 ? 0.32 : 0.5, 14).rotateZ(Math.PI / 2).translate(xx, 0.52, zz), '#15181b'))
+  if (mixer) {
+    const drum = new THREE.CylinderGeometry(0.9, 1.25, 4.8, 18)
+    drum.rotateX(Math.PI / 2 - 0.22)
+    parts.push(tint(drum.translate(0, 2.55, -1.2), '#e2dfd6'))
+    parts.push(tint(new THREE.CylinderGeometry(1.26, 1.26, 0.25, 18).rotateX(Math.PI / 2 - 0.22).translate(0, 2.4, -0.4), T.safety))
+    parts.push(tint(new THREE.CylinderGeometry(0.42, 0.42, 1.0, 12).rotateZ(Math.PI / 2).translate(0, 2.1, zf - 2.9), '#c9ccce'))
+    box(0.5, 0.08, 1.4, 0, 1.6, -zf - 0.3, '#8b949c')
+  } else {
+    // deck (top at 1.25 m), stake rails, the headboard behind the cab
+    const deckLen = L - 2.8
+    box(2.5, 0.16, deckLen, 0, 1.17, -zf + deckLen / 2, '#5b4a3a')
+    for (const x of [-1.24, 1.24]) box(0.06, 0.2, deckLen, x, 1.2, -zf + deckLen / 2, dark)
+    box(2.44, 1.3, 0.08, 0, 1.9, zf - 2.62, '#6f787f')
+    for (const x of [-0.9, -0.3, 0.3, 0.9]) box(0.08, 1.3, 0.1, x, 1.9, zf - 2.58, dark)
+  }
+  return mergeAll(parts)
+}
+
+/**
+ * A parked car with a real side profile (bevelled, extruded): painted body
+ * (white: the instance colour paints it), a dark glasshouse set in from the
+ * body sides, painted roof, wheels, lamps. `suv` = taller, boxier.
+ */
+function carGeometry(suv: boolean) {
+  const ext = extrudeSide
+  const parts: THREE.BufferGeometry[] = []
+  const paint = '#ffffff'
+  const glass = '#1b2229'
+  if (!suv) {
+    parts.push(ext([[-2.15, 0.36], [2.08, 0.36], [2.17, 0.5], [2.15, 0.7], [1.9, 0.8], [0.98, 0.9], [-1.4, 0.94], [-2.06, 0.91], [-2.17, 0.78], [-2.19, 0.5]], 1.76, paint))
+    parts.push(ext([[-1.36, 0.9], [0.98, 0.86], [0.28, 1.34], [-0.9, 1.36], [-1.32, 1.02]], 1.5, glass, 0.03))
+    parts.push(ext([[0.34, 1.3], [-0.92, 1.32], [-0.9, 1.4], [0.3, 1.39]], 1.46, paint, 0.03))
+  } else {
+    parts.push(ext([[-2.25, 0.42], [2.15, 0.42], [2.27, 0.6], [2.25, 0.9], [2.05, 1.02], [1.12, 1.1], [-2.15, 1.12], [-2.27, 1.0], [-2.29, 0.6]], 1.84, paint))
+    parts.push(ext([[-2.16, 1.08], [1.12, 1.06], [0.46, 1.64], [-2.0, 1.66], [-2.2, 1.28]], 1.6, glass, 0.03))
+    parts.push(ext([[0.52, 1.58], [-2.02, 1.6], [-2.0, 1.72], [0.46, 1.71]], 1.58, paint, 0.03))
+  }
+  const wr = suv ? 0.37 : 0.32
+  const wz = suv ? 1.42 : 1.33
+  const wx = suv ? 0.8 : 0.76
+  for (const z of [-wz, wz])
+    for (const x of [-wx, wx]) parts.push(tint(new THREE.CylinderGeometry(wr, wr, 0.24, 12).rotateZ(Math.PI / 2).translate(x, wr, z), '#0e1114'))
+  const front = suv ? 2.3 : 2.2
+  for (const x of [-0.62, 0.62]) {
+    parts.push(tint(new THREE.BoxGeometry(0.34, 0.1, 0.04).translate(x, suv ? 0.88 : 0.66, -front), '#e8e6df'))
+    parts.push(tint(new THREE.BoxGeometry(0.3, 0.1, 0.04).translate(x, suv ? 0.92 : 0.8, front), '#6a1612'))
+  }
+  return mergeAll(parts)
 }
 
 export class Site {
@@ -267,26 +466,56 @@ export class Site {
     box(-48.5, -18, Math.PI / 2, '#56707a')
     // a mixer truck inside the gate, a flatbed delivering steel on the haul road
     const truck = (x: number, z: number, rot: number, mixer: boolean) => {
-      const parts = [
-        tint(new THREE.BoxGeometry(2.5, 0.5, mixer ? 8.5 : 13).translate(0, 1.0, 0), '#23272d'),
-        tint(new THREE.BoxGeometry(2.5, 2.3, 2.2).translate(0, 2.2, (mixer ? 8.5 : 13) / 2 - 1.2), mixer ? '#f4f1ea' : '#b4502a'),
-        tint(new THREE.BoxGeometry(2.52, 0.9, 0.6).translate(0, 2.6, (mixer ? 8.5 : 13) / 2 - 0.2), '#28323b'),
-      ]
-      for (const zz of mixer ? [-2.8, -1.4, 2.6] : [-5.2, -4, -2.8, 4.8])
-        for (const xx of [-1.1, 1.1]) parts.push(tint(new THREE.CylinderGeometry(0.5, 0.5, 0.35, 12).rotateZ(Math.PI / 2).translate(xx, 0.5, zz), '#15181b'))
-      if (mixer) {
-        const drum = new THREE.CylinderGeometry(0.9, 1.25, 4.8, 16)
-        drum.rotateX(Math.PI / 2 - 0.22)
-        parts.push(tint(drum.translate(0, 2.55, -1.2), '#e2dfd6'))
-        parts.push(tint(new THREE.CylinderGeometry(1.26, 1.26, 0.25, 16).rotateX(Math.PI / 2 - 0.22).translate(0, 2.4, -0.4), T.safety))
-      }
-      const g = mergeAll(parts)
+      const g = truckGeometry(mixer, mixer ? '#f4f1ea' : '#b4502a')
       g.rotateY(rot)
       g.translate(x, 0, z)
       props.push(g)
     }
     truck(22, 44, 0, true)
     truck(-8, 22, Math.PI / 2, false)
+    // rebar bundles on dunnage (rusted bar, three layers) by the cabins and the yard
+    const rebar = (x: number, z: number, rot: number, len: number) => {
+      const bars: THREE.BufferGeometry[] = []
+      for (let l = 0; l < 3; l++)
+        for (let k = 0; k < 11 - l; k++) bars.push(new THREE.CylinderGeometry(0.018, 0.018, len, 4).rotateZ(Math.PI / 2).translate(0, 0.24 + l * 0.034, (k - 5 + l * 0.5) * 0.037))
+      const g = mergeAll([
+        tint(mergeAll(bars), '#6a3b26'),
+        ...[-len * 0.35, len * 0.35].map(dx => tint(new THREE.BoxGeometry(0.16, 0.16, 0.8).translate(dx, 0.08, 0), '#8a7456')),
+        ...[-len * 0.2, len * 0.2].map(dx => tint(new THREE.BoxGeometry(0.03, 0.17, 0.46).translate(dx, 0.28, 0), '#caa23a')),
+      ])
+      g.rotateY(rot)
+      g.translate(x, 0, z)
+      props.push(g)
+    }
+    rebar(33, 30, 0.15, 12)
+    rebar(33.4, 31.6, 0.12, 12)
+    rebar(-27, 47, -0.05, 9)
+    rebar(46, -46, 1.45, 12)
+    // spoil heap (excavated earth) and a gravel pile: lumpy cones
+    const heap = (x: number, z: number, r: number, h: number, color: string, seed: number) => {
+      const g = new THREE.ConeGeometry(r, h, 16, 4)
+      const pos = g.attributes.position as THREE.BufferAttribute
+      for (let i = 0; i < pos.count; i++) {
+        const px = pos.getX(i)
+        const pz = pos.getZ(i)
+        const py = pos.getY(i)
+        const n = Math.sin(px * 1.3 + seed) * Math.cos(pz * 1.1 - seed) * 0.5 + Math.sin(px * 3.1 + pz * 2.3 + seed * 2) * 0.25
+        const rim = 1 - Math.abs(py / h - 0.5) * 2
+        pos.setXYZ(i, px * (1 + n * 0.12), py + n * h * 0.12 * rim, pz * (1 + n * 0.12))
+      }
+      g.computeVertexNormals()
+      g.translate(x, h / 2 - 0.1, z)
+      props.push(tint(g, color))
+    }
+    heap(-44, -46, 7.5, 3.4, '#6a5646', 1.7)
+    heap(-36, -50, 4.5, 2.1, '#6f5b4a', 4.2)
+    heap(47, 6, 3.4, 1.7, '#8a8781', 2.9)
+    // welfare units by the cabins
+    for (const [x, z] of [
+      [-40.2, 27.2],
+      [-38.8, 27.2],
+    ] as const)
+      props.push(mergeAll([tint(new THREE.BoxGeometry(1.15, 2.3, 1.15).translate(x, 1.15, z), '#2f5f8f'), tint(new THREE.BoxGeometry(1.2, 0.08, 1.2).translate(x, 2.34, z), '#dcd9d0')]))
     const propsMesh = new THREE.Mesh(mergeAll(props), MAT.person())
     propsMesh.castShadow = propsMesh.receiveShadow = shadow
     this.onSite.add(propsMesh)
@@ -316,21 +545,20 @@ export class Site {
     deckPacks.castShadow = shadow
     this.onSite.add(deckPacks)
 
-    // ---- ground crew ------------------------------------------------------------
-    const crew: [number, number, number][] = [
-      [19, 18, 0.4],
-      [23.5, 17.2, -2.2],
-      [-19, 21, 1.2],
-      [36, -26, 2.8],
-      [21, 40, -0.4],
-      [-42.3, 37.8, 3.1],
-      [8, 19.5, 0.2],
+    // ---- ground crew: one merged, varied mesh (skin, vests, hats, poses) ------
+    const crew: [number, number, number, 'stand' | 'walk' | 'work' | 'reach'][] = [
+      [19, 18, 0.4, 'work'],
+      [23.5, 17.2, -2.2, 'stand'],
+      [-19, 21, 1.2, 'walk'],
+      [36, -26, 2.8, 'work'],
+      [21, 40, -0.4, 'reach'],
+      [-42.3, 37.8, 3.1, 'walk'],
+      [8, 19.5, 0.2, 'stand'],
     ]
-    const people = new THREE.InstancedMesh(personGeometry(), MAT.person(), mobile ? 4 : crew.length)
-    for (let i = 0; i < people.count; i++) {
-      const [x, z, r] = crew[i]
-      people.setMatrixAt(i, new THREE.Matrix4().compose(new THREE.Vector3(x, 0.12, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), r), new THREE.Vector3(1, 1, 1)))
-    }
+    const people = new THREE.Mesh(
+      mergeAll(crew.slice(0, mobile ? 4 : crew.length).map(([x, z, r, pose], i) => personGeometry({ pose, seed: 101 + i * 3 }).rotateY(r).translate(x, 0.12, z))),
+      MAT.person(),
+    )
     people.castShadow = shadow
     this.onSite.add(people)
 
@@ -343,10 +571,10 @@ export class Site {
     }
     // sidewalk ring (x or z = ±66), skipping the gate
     for (let t = -54; t <= 54; t += 12) {
-      put(t, 65.5, 0.9 + rnd() * 0.3)
-      put(t, -65.5, 0.9 + rnd() * 0.3)
-      put(65.5, t, 0.9 + rnd() * 0.3)
-      put(-65.5, t, 0.9 + rnd() * 0.3)
+      put(t, 65.5, 0.85 + rnd() * 0.3)
+      put(t, -65.5, 0.85 + rnd() * 0.3)
+      put(65.5, t, 0.85 + rnd() * 0.3)
+      put(-65.5, t, 0.85 + rnd() * 0.3)
     }
     // the square
     const nSquare = mobile ? 26 : 48
@@ -360,42 +588,42 @@ export class Site {
         return Math.min(m, 48 - m)
       }
       if (Math.min(toStreet(x), toStreet(z)) < 8) continue // keep off streets + kerbs
-      put(x, z, 1 + rnd() * 0.5)
+      put(x, z, 0.85 + rnd() * 0.4)
       i++
     }
-    // street trees: a trunk and a loose canopy of low-poly clumps (London planes, muted)
-    const trunk = tint(new THREE.CylinderGeometry(0.13, 0.2, 3.4, 5).translate(0, 1.7, 0), '#4a3f33')
-    const clumps: THREE.BufferGeometry[] = [trunk]
-    for (const [x, y, z, r, c] of [
-      [0, 4.9, 0, 1.9, '#465532'],
-      [1.2, 5.6, 0.5, 1.4, '#51603a'],
-      [-1.1, 5.4, -0.4, 1.5, '#3f4c2d'],
-      [0.2, 6.4, -0.9, 1.2, '#56663e'],
-      [-0.4, 5.9, 1.1, 1.1, '#4a5934'],
-    ] as const)
-      clumps.push(tint(new THREE.IcosahedronGeometry(r, 0).scale(1, 0.8, 1).translate(x, y, z), c))
-    const treeGeo = mergeAll(clumps)
-    const treeMesh = new THREE.InstancedMesh(treeGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0, flatShading: true }), trees.length)
+    // street trees (London planes: pale trunks, sparse canopies) + the square's
+    // (broader); instance colour varies each tree a little
+    const leaves = leafTexture()
+    const treeMat = new THREE.MeshStandardMaterial({ map: leaves, vertexColors: true, alphaTest: 0.5, roughness: 0.92, metalness: 0 })
+    const treeDepth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: leaves, alphaTest: 0.5 })
+    const nStreet = 40
+    const variants = [
+      { geo: treeGeometry(41, { height: 8.2, spread: 2.2, cards: mobile ? 18 : 28 }), from: 0, to: nStreet },
+      { geo: treeGeometry(77, { height: 9.4, spread: 3.0, cards: mobile ? 22 : 36 }), from: nStreet, to: trees.length },
+    ]
     const tc = new THREE.Color()
-    trees.forEach((m, i) => {
-      treeMesh.setMatrixAt(i, m)
-      treeMesh.setColorAt(i, tc.setHSL(0.16 + rnd() * 0.06, 0.2 + rnd() * 0.15, 0.55 + rnd() * 0.12).multiplyScalar(1.5))
-    })
-    treeMesh.castShadow = shadow
-    this.street.add(treeMesh)
+    const treeMeshes: THREE.InstancedMesh[] = []
+    for (const v of variants) {
+      const n = v.to - v.from
+      if (n <= 0) continue
+      const mesh = new THREE.InstancedMesh(v.geo, treeMat, n)
+      for (let i = 0; i < n; i++) {
+        mesh.setMatrixAt(i, trees[v.from + i])
+        // near-neutral: a little warmer / cooler, lighter / darker per tree
+        const w = rnd()
+        mesh.setColorAt(i, tc.setRGB(0.95 + 0.2 * w, 1.0 + 0.08 * rnd(), 0.82 + 0.2 * (1 - w)).multiplyScalar(0.95 + rnd() * 0.3))
+      }
+      mesh.castShadow = shadow
+      mesh.customDepthMaterial = treeDepth
+      this.street.add(mesh)
+      treeMeshes.push(mesh)
+    }
 
     // parked cars along the kerbs of the ring streets (72 ± 3.6)
-    // cars: painted body (instance colour), dark glasshouse, wheels in the arches
-    const car = mergeAll([
-      tint(new THREE.BoxGeometry(1.78, 0.62, 4.4).translate(0, 0.62, 0), '#ffffff'),
-      tint(new THREE.BoxGeometry(1.7, 0.1, 4.3).translate(0, 0.98, 0), '#ffffff'),
-      tint(new THREE.BoxGeometry(1.5, 0.52, 2.3).translate(0, 1.28, -0.25), '#161b21'),
-      tint(new THREE.BoxGeometry(1.4, 0.06, 2.0).translate(0, 1.56, -0.25), '#ffffff'),
-      ...[-1.35, 1.35].flatMap(z => [-0.8, 0.8].map(x => tint(new THREE.CylinderGeometry(0.32, 0.32, 0.24, 10).rotateZ(Math.PI / 2).translate(x, 0.32, z), '#0e1114'))),
-    ])
-    const carM: THREE.Matrix4[] = []
-    const carC: THREE.Color[] = []
-    const paints = ['#c9c9c6', '#1c1f24', '#6f787f', '#34404f', '#6a2620', '#a8a296', '#26302a', '#1f2a3a']
+    // cars: sedans and SUVs with real profiles; painted by instance colour
+    const carM: THREE.Matrix4[][] = [[], []]
+    const carC: THREE.Color[][] = [[], []]
+    const paints = ['#c9c9c6', '#1c1f24', '#6f787f', '#34404f', '#6a2620', '#a8a296', '#26302a', '#1f2a3a', '#e4e3df', '#3d4247']
     for (let t = -84; t <= 84; t += 6.2) {
       for (const [x, z, rot] of [
         [t, 75.8, Math.PI / 2],
@@ -405,16 +633,22 @@ export class Site {
       ] as const) {
         if (rnd() < 0.45) continue
         if (Math.abs(t) > 64 && Math.abs(t) < 80) continue // intersections
-        carM.push(new THREE.Matrix4().compose(new THREE.Vector3(x, 0, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rot + (rnd() < 0.5 ? 0 : Math.PI)), new THREE.Vector3(1, 1, 1)))
-        carC.push(new THREE.Color(paints[Math.floor(rnd() * paints.length)]))
+        const kind = rnd() < 0.38 ? 1 : 0
+        carM[kind].push(new THREE.Matrix4().compose(new THREE.Vector3(x, 0, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rot + (rnd() < 0.5 ? 0 : Math.PI)), new THREE.Vector3(1, 1, 1)))
+        carC[kind].push(new THREE.Color(paints[Math.floor(rnd() * paints.length)]))
       }
     }
-    const cars = new THREE.InstancedMesh(car, new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.35, roughness: 0.45 }), carM.length)
-    carM.forEach((m, i) => {
-      cars.setMatrixAt(i, m)
-      cars.setColorAt(i, carC[i])
-    })
-    this.street.add(cars)
+    const carMat = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.4, roughness: 0.38 })
+    const carMeshes: THREE.InstancedMesh[] = []
+    for (const kind of [0, 1]) {
+      const cars = new THREE.InstancedMesh(carGeometry(kind === 1), carMat, carM[kind].length)
+      carM[kind].forEach((m, i) => {
+        cars.setMatrixAt(i, m)
+        cars.setColorAt(i, carC[kind][i])
+      })
+      this.street.add(cars)
+      carMeshes.push(cars)
+    }
 
     // street-light poles + heads round the site
     const poleM: THREE.Matrix4[] = []
@@ -427,7 +661,7 @@ export class Site {
       ] as const)
         poleM.push(new THREE.Matrix4().compose(new THREE.Vector3(x, 0, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), r), new THREE.Vector3(1, 1, 1)))
     const pole = mergeAll([new THREE.CylinderGeometry(0.09, 0.12, 7.5, 6).translate(0, 3.75, 0), new THREE.BoxGeometry(0.08, 0.08, 1.8).translate(0, 7.4, 0.85)])
-    const poles = new THREE.InstancedMesh(pole, MAT.steel(), poleM.length)
+    const poles = new THREE.InstancedMesh(pole, MAT.steel({ instanced: true }), poleM.length)
     this.lampMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(T.sodium), toneMapped: false })
     const heads = new THREE.InstancedMesh(new THREE.BoxGeometry(0.5, 0.14, 0.9).translate(0, 7.3, 1.6), this.lampMat, poleM.length)
     poleM.forEach((m, i) => {
@@ -435,11 +669,11 @@ export class Site {
       heads.setMatrixAt(i, m)
     })
     this.street.add(poles, heads)
-    for (const m of [treeMesh, cars, poles, heads, people]) m.computeBoundingSphere()
+    for (const m of [...treeMeshes, ...carMeshes, poles, heads]) m.computeBoundingSphere()
   }
 
   /** lights 0 day … 1 night */
   update(lights: number) {
-    this.lampMat.color.set(T.sodium).multiplyScalar(0.15 + 2.8 * THREE.MathUtils.smoothstep(lights, 0.15, 0.6))
+    this.lampMat.color.copy(TC.sodium).multiplyScalar(0.15 + 2.8 * THREE.MathUtils.smoothstep(lights, 0.15, 0.6))
   }
 }
