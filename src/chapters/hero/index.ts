@@ -3,7 +3,7 @@ import type { Chapter } from '../../core/types'
 import { el, rise, setRise, reveal } from '../../core/dom'
 import { BRAND, MICROCOPY } from '../../content'
 import { ease, segment, smoothstep } from '../../core/math'
-import { placeholderFloor, placeholderMark, framedCamera } from '../common'
+import { placeholderFloor, placeholderMark, framedCamera, applySite, frontierCamera, frontierY } from '../common'
 import '../chapter.css'
 
 /*
@@ -14,6 +14,7 @@ import '../chapter.css'
 export default function create(): Chapter {
   const group = new THREE.Group()
   const mark = placeholderMark()
+  mark.visible = false
   mark.scale.setScalar(2.2)
   group.add(mark, placeholderFloor())
   let intro: HTMLElement
@@ -42,7 +43,8 @@ export default function create(): Chapter {
         window.__hark.land('contact')
       })
     },
-    update(local, frame) {
+    update(local, frame, ctx) {
+      applySite(ctx, 'hero', local)
       const spin = ease.inOutCubic(segment(local, 0.1, 0.6))
       mark.rotation.set(0.15 * Math.sin(frame.time * 0.6), spin * Math.PI * 2 + frame.time * 0.1, 0)
       reveal(intro, 1 - smoothstep(0.08, 0.14, local))
@@ -50,7 +52,7 @@ export default function create(): Chapter {
       setRise(title, local > 0.64 && local < 0.95)
     },
     camera(local, frame, out) {
-      framedCamera(out, frame, ease.inOutCubic(segment(local, 0.55, 0.7)))
+      frontierCamera(out, frame, frontierY('hero', local))
     },
   }
 }

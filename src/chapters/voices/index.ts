@@ -3,7 +3,7 @@ import type { Chapter } from '../../core/types'
 import { el, rise, setRise, reveal } from '../../core/dom'
 import { SECTIONS, TESTIMONIALS } from '../../content'
 import { smoothstep } from '../../core/math'
-import { beat, placeholderFloor, placeholderMark, framedCamera } from '../common'
+import { beat, placeholderFloor, placeholderMark, framedCamera, applySite, frontierCamera, frontierY } from '../common'
 import '../chapter.css'
 
 /*
@@ -12,7 +12,8 @@ import '../chapter.css'
  */
 export default function create(): Chapter {
   const group = new THREE.Group()
-  const mark = placeholderMark('#c2419a')
+  const mark = placeholderMark()
+  mark.visible = false
   mark.scale.setScalar(1.4)
   group.add(mark, placeholderFloor())
   const B = beat(0, TESTIMONIALS.length, 0.08, 0.94)
@@ -33,7 +34,8 @@ export default function create(): Chapter {
       quote.style.margin = '0'
       who = el('figcaption', 'hud-label', '', card)
     },
-    update(local, frame) {
+    update(local, frame, ctx) {
+      applySite(ctx, 'voices', local)
       const b = beat(local, TESTIMONIALS.length, 0.08, 0.94)
       mark.rotation.y = frame.time * 0.2 + local * 2
       reveal(intro, 1 - smoothstep(0.07, 0.1, local))
@@ -46,8 +48,8 @@ export default function create(): Chapter {
         who.textContent = `${t.name} · ${t.company}`
       }
     },
-    camera(_local, frame, out) {
-      framedCamera(out, frame)
+    camera(local, frame, out) {
+      frontierCamera(out, frame, frontierY('voices', local))
     },
   }
 }

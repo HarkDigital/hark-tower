@@ -11,11 +11,11 @@ import type { ChapterDef } from '../core/types'
  * shared with src/core/srContent.ts and the chrome's business names.
  */
 export const CHAPTERS: ChapterDef[] = [
-  { id: 'hero', label: 'Intro', length: 2.6, landing: 0, load: () => import('./hero/index') },
-  { id: 'work', label: 'Work', length: 3.8, landing: 0.12, load: () => import('./work/index') },
-  { id: 'services', label: 'Services', length: 3.8, landing: 0.08, load: () => import('./services/index') },
-  { id: 'voices', label: 'Voices', length: 3.0, landing: 0.08, load: () => import('./voices/index') },
-  { id: 'shield', label: 'Security', length: 1.7, landing: 0.45, load: () => import('./shield/index') },
-  { id: 'process', label: 'Process', length: 2.2, landing: 0.17, load: () => import('./process/index') },
-  { id: 'contact', label: 'Contact', length: 1.5, landing: 0.3, load: () => import('./contact/index') },
+  { id: 'hero', label: 'Groundbreaking', length: 2.6, landing: 0, load: () => import('./hero/index') },
+  { id: 'work', label: 'Steel', length: 3.8, landing: 0.12, load: () => import('./work/index') },
+  { id: 'services', label: 'Floors', length: 3.8, landing: 0.08, load: () => import('./services/index') },
+  { id: 'voices', label: 'Tenants', length: 3.0, landing: 0.08, load: () => import('./voices/index') },
+  { id: 'shield', label: 'Wind Load', length: 1.7, landing: 0.45, load: () => import('./shield/index') },
+  { id: 'process', label: 'Blueprint', length: 2.2, landing: 0.17, load: () => import('./process/index') },
+  { id: 'contact', label: 'Topping Out', length: 1.5, landing: 0.3, load: () => import('./contact/index') },
 ]

@@ -6,20 +6,24 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js'
 
 /*
- * Post-processing: Render → Sanitize (NaN guard) → Bloom → Output → FINAL.
+ * Post-processing for Hark Tower: Render → Sanitize (NaN guard) → Bloom →
+ * Output → FINAL.
  *
- * THEME: the FINAL pass is where a concept gets its signature look and its
- * chapter-cut transition. Previous concepts replaced it with:
- *   Orbit      glitch tear + zoom blur + white-green flash
- *   Resonance  pressure-wave ripple + paper wash
- *   Press      ink densities → rotated halftone screens (riso)
- *   Town       tilt-shift blur + miniature saturation + cloud wipe
- *   Arcade     pixelate + palette snap + Bayer dither + CRT + iris wipe
+ * FINAL is an architectural-film finish (gentle vignette, fine grain, a touch
+ * of lens aberration, flash and fade) plus the BLUEPRINT CUT: approaching a
+ * chapter boundary the frame is redrawn as an architect's blueprint — the
+ * scene's edges (a Sobel pass on luminance) become pale cyan linework on
+ * blueprint-blue drafting paper with a grid, converting from the top of the
+ * frame down like a sheet being laid on the table. At the boundary the sheet
+ * is clean (grid only), which hides the swap; the next chapter is then drawn
+ * in, and the paper lifts away.
  *
- * This neutral version: soft radial wipe to `uCutColor` at cuts, gentle
- * chromatic aberration, vignette, grain, flash and fade. Keep the Post API
- * (params / resetParams / setSize / render / compileAsync / setFadeTone) and
- * the uTransition / uFade / uFlash / uGlitch uniforms — the engine drives them.
+ * `params.draft` (0..1) lets a chapter hold part of the blueprint look on
+ * purpose (e.g. the Blueprint chapter).
+ *
+ * Keep the Post API (params / resetParams / setSize / render / compileAsync /
+ * setFadeTone) and the uTransition / uFade / uFlash / uGlitch uniforms — the
+ * engine drives them.
  */
 
 const FinalShader = {
@@ -30,18 +34,20 @@ const FinalShader = {
     uDpr: { value: 1 },
     /** 0..1, peaks exactly at a chapter boundary (engine-driven) */
     uTransition: { value: 0 },
-    /** 0..1 wobble a chapter can add (THEME: glitch / heat shimmer / VHS …) */
+    /** 0..1 heat haze / wind shimmer a chapter can add */
     uGlitch: { value: 0 },
-    uAberration: { value: 0.0015 },
+    uAberration: { value: 0.0012 },
     uGrain: { value: 0.03 },
-    uVignette: { value: 0.3 },
+    uVignette: { value: 0.32 },
     /** 0..1 wash to white */
     uFlash: { value: 0 },
     /** 0..1 fade to uFadeColor (reduced-motion cuts) */
     uFade: { value: 0 },
-    /** colour the cut wipes through (THEME) */
-    uCutColor: { value: new THREE.Color('#0d0f12') },
-    uFadeColor: { value: new THREE.Color('#0d0f12') },
+    /** 0..1 chapter-held blueprint look */
+    uDraft: { value: 0 },
+    uPaper: { value: new THREE.Color('#0d3566') },
+    uLine: { value: new THREE.Color('#cfeaff') },
+    uFadeColor: { value: new THREE.Color('#0d3566') },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -49,44 +55,81 @@ const FinalShader = {
   `,
   fragmentShader: /* glsl */ `
     uniform sampler2D tDiffuse;
-    uniform float uTime, uDpr, uTransition, uGlitch, uAberration, uGrain, uVignette, uFlash, uFade;
+    uniform float uTime, uDpr, uTransition, uGlitch, uAberration, uGrain, uVignette, uFlash, uFade, uDraft;
     uniform vec2 uResolution;
-    uniform vec3 uCutColor, uFadeColor;
+    uniform vec3 uPaper, uLine, uFadeColor;
     varying vec2 vUv;
 
     float hash(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+    float pow2(float x) { return x * x; }
+    float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+
+    // Sobel edge strength on luminance, sampled at a DPR-scaled pixel step
+    float edges(vec2 uv) {
+      vec2 px = uDpr * 1.25 / uResolution;
+      float tl = luma(texture2D(tDiffuse, uv + px * vec2(-1.0, 1.0)).rgb);
+      float t = luma(texture2D(tDiffuse, uv + px * vec2(0.0, 1.0)).rgb);
+      float tr = luma(texture2D(tDiffuse, uv + px * vec2(1.0, 1.0)).rgb);
+      float l = luma(texture2D(tDiffuse, uv + px * vec2(-1.0, 0.0)).rgb);
+      float r = luma(texture2D(tDiffuse, uv + px * vec2(1.0, 0.0)).rgb);
+      float bl = luma(texture2D(tDiffuse, uv + px * vec2(-1.0, -1.0)).rgb);
+      float b = luma(texture2D(tDiffuse, uv + px * vec2(0.0, -1.0)).rgb);
+      float br = luma(texture2D(tDiffuse, uv + px * vec2(1.0, -1.0)).rgb);
+      float gx = -tl - 2.0 * l - bl + tr + 2.0 * r + br;
+      float gy = -tl - 2.0 * t - tr + bl + 2.0 * b + br;
+      return sqrt(gx * gx + gy * gy);
+    }
+
+    vec3 paper(vec2 uv) {
+      vec2 p = uv * uResolution / uDpr;                   // CSS px
+      vec2 g1 = abs(fract(p / 24.0 + 0.5) - 0.5) * 24.0;  // minor grid
+      vec2 g2 = abs(fract(p / 120.0 + 0.5) - 0.5) * 120.0; // major grid
+      float minor = 1.0 - smoothstep(0.0, 0.9, min(g1.x, g1.y));
+      float major = 1.0 - smoothstep(0.0, 1.2, min(g2.x, g2.y));
+      vec3 c = uPaper * (0.9 + 0.2 * (1.0 - length(uv - 0.5)));
+      c = mix(c, uLine, minor * 0.08 + major * 0.18);
+      // paper tooth
+      c += (hash(floor(p)) - 0.5) * 0.02;
+      return c;
+    }
 
     void main() {
       vec2 uv = vUv;
-      float g = clamp(uGlitch, 0.0, 1.0);
-      uv.x += g * 0.004 * sin(uv.y * 60.0 + uTime * 12.0);
-
       vec2 c = uv - 0.5;
+      float g = clamp(uGlitch, 0.0, 1.0);
+      uv.x += g * 0.003 * sin(uv.y * 70.0 + uTime * 9.0);
+
       vec3 col;
       col.r = texture2D(tDiffuse, uv + c * uAberration).r;
       col.g = texture2D(tDiffuse, uv).g;
       col.b = texture2D(tDiffuse, uv - c * uAberration).b;
 
-      // THEME: the chapter-cut transition. Neutral: a soft radial wipe that
-      // closes toward the centre at the boundary (t = 1) and reopens after.
+      // ---- the blueprint (cut) — converts from the top of the frame down
       float t = clamp(uTransition, 0.0, 1.0);
-      if (t > 0.001) {
-        float aspect = uResolution.x / max(uResolution.y, 1.0);
-        float r = length(c * vec2(aspect, 1.0));
-        float reach = (1.0 - t) * 1.1;
-        float wipe = 1.0 - smoothstep(reach - 0.12, reach, r);
-        col = mix(uCutColor, col, wipe);
+      float m = max(clamp(t * 1.7 - (1.0 - uv.y) * 0.7, 0.0, 1.0), clamp(uDraft, 0.0, 1.0));
+      if (m > 0.001) {
+        float e = edges(uv);
+        // linework fades out near the boundary: the sheet is clean at the swap
+        float ink = smoothstep(0.08, 0.35, e) * (1.0 - smoothstep(0.72, 0.98, t));
+        vec3 bp = mix(paper(uv), uLine, ink * 0.9);
+        // a bright drafting edge where the sheet is being laid
+        float front = exp(-pow2((m - 0.5) * 7.0)) * (1.0 - step(0.999, m)) * step(0.001, t);
+        bp += uLine * front * 0.12;
+        col = mix(col, bp, smoothstep(0.0, 1.0, m));
       }
 
       col = mix(col, vec3(1.0), clamp(uFlash, 0.0, 1.0));
       float v = 1.0 - smoothstep(0.35, 1.05, length(c * vec2(1.0, 0.9)) * 1.4);
-      col *= mix(1.0, 0.55 + 0.45 * v, uVignette);
+      col *= mix(1.0, 0.62 + 0.38 * v, uVignette);
       col += (hash(vUv * uResolution + fract(uTime * 7.13) * 91.0) - 0.5) * uGrain;
       col = mix(col, uFadeColor, clamp(uFade, 0.0, 1.0));
       gl_FragColor = vec4(col, 1.0);
     }
   `,
 }
+
+/** minimum seconds between two white-flash onsets (WCAG 2.3.1) */
+const FLASH_GAP = 0.4
 
 export type PostParams = {
   bloomStrength: number
@@ -100,20 +143,22 @@ export type PostParams = {
   /** white wash 0..1 */
   flash: number
   exposure: number
-  // THEME: add your look's params here (and damp them in render()).
+  /** 0..1 hold part of the blueprint look (drafting-table moments) */
+  draft: number
 }
 
 /** Bloom only catches HDR (> ~1.0): emissive lamps, LEDs, speculars. */
 export const POST_DEFAULTS: PostParams = {
-  bloomStrength: 0.45,
-  bloomRadius: 0.4,
-  bloomThreshold: 1.0,
-  aberration: 0.0015,
+  bloomStrength: 0.4,
+  bloomRadius: 0.45,
+  bloomThreshold: 0.95,
+  aberration: 0.0012,
   grain: 0.03,
-  vignette: 0.3,
+  vignette: 0.32,
   glitch: 0,
   flash: 0,
   exposure: 1,
+  draft: 0,
 }
 
 /**
@@ -149,6 +194,9 @@ export class Post {
   private current: PostParams = { ...POST_DEFAULTS }
   transition = 0
   fade = 0
+  private lastFlashAt = -1e9
+  private flashLive = false
+  private flashOk = true
 
   constructor(
     private renderer: THREE.WebGLRenderer,
@@ -172,9 +220,8 @@ export class Post {
     this.composer.addPass(this.final)
   }
 
-  /** THEME: colour the cut and reduced-motion fade pass through. */
+  /** Colour the reduced-motion fade passes through (blueprint blue by default). */
   setCutColor(color: THREE.ColorRepresentation) {
-    ;(this.final.uniforms.uCutColor.value as THREE.Color).set(color)
     ;(this.final.uniforms.uFadeColor.value as THREE.Color).set(color)
   }
 
@@ -222,6 +269,15 @@ export class Post {
       // flash & glitch respond instantly so chapters can punch them
       c[key] = key === 'flash' || key === 'glitch' ? p[key] : c[key] + (p[key] - c[key]) * k
     }
+    // flash budget (WCAG 2.3.1): a flash starting within FLASH_GAP of the last is dropped
+    if (c.flash > 0.02) {
+      if (!this.flashLive) {
+        this.flashLive = true
+        this.flashOk = time - this.lastFlashAt >= FLASH_GAP
+        if (this.flashOk) this.lastFlashAt = time
+      }
+      if (!this.flashOk) c.flash = 0
+    } else this.flashLive = false
     this.bloom.strength = c.bloomStrength
     this.bloom.radius = c.bloomRadius
     this.bloom.threshold = c.bloomThreshold
@@ -234,6 +290,7 @@ export class Post {
     u.uGrain.value = c.grain
     u.uVignette.value = c.vignette
     u.uFlash.value = c.flash
+    u.uDraft.value = c.draft
     u.uFade.value = this.fade
     this.composer.render(dt)
   }

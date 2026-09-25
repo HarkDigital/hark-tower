@@ -1,6 +1,8 @@
-// THEME: fonts (@fontsource packages). Neutral defaults: Inter + JetBrains Mono.
-import '@fontsource-variable/inter'
-import '@fontsource-variable/jetbrains-mono'
+// Fonts: Big Shoulders Display (Chicago's skyscraper face) + Archivo (wdth/wght) + IBM Plex Mono (drawing annotations).
+import '@fontsource-variable/big-shoulders-display'
+import '@fontsource-variable/archivo/standard.css'
+import '@fontsource/ibm-plex-mono/400.css'
+import '@fontsource/ibm-plex-mono/500.css'
 import './styles/base.css'
 import './ui/ui.css'
 

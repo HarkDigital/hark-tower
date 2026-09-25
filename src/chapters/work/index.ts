@@ -3,7 +3,7 @@ import type { Chapter } from '../../core/types'
 import { el, rise, setRise, reveal } from '../../core/dom'
 import { SECTIONS, WORK, workImage } from '../../content'
 import { smoothstep } from '../../core/math'
-import { beat, placeholderFloor } from '../common'
+import { beat, placeholderFloor, applySite, frontierCamera, frontierY } from '../common'
 import { loadScreenshot, placeholderTexture, whenRevealed } from '../../kit/images'
 import '../chapter.css'
 
@@ -19,13 +19,14 @@ const isPreview = (url: string) => /harktest\.com/.test(url)
 
 export default function create(): Chapter {
   const group = new THREE.Group()
+  group.position.y = -600 // placeholder content parked out of view
   const screens = FEATURED.map((_, i) => {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 2), new THREE.MeshBasicMaterial({ map: placeholderTexture(), toneMapped: false }))
     m.position.set(i * 5, 0.4, 0)
     group.add(m)
     return m
   })
-  group.add(placeholderFloor(60))
+  group.add(placeholderFloor())
   const B = beat(0, FEATURED.length, 0.1, 0.84)
   let intro: HTMLElement, introTitle: HTMLElement
   let card: HTMLElement, name: HTMLElement, meta: HTMLElement, blurb: HTMLElement, tags: HTMLElement, visit: HTMLAnchorElement
@@ -74,7 +75,8 @@ export default function create(): Chapter {
         for (let i = 1; i < FEATURED.length; i++) await load(i)
       })
     },
-    update(local) {
+    update(local, _f, ctx) {
+      applySite(ctx, 'work', local)
       const b = beat(local, FEATURED.length, 0.1, 0.84)
       reveal(intro, 1 - smoothstep(0.09, 0.12, local))
       setRise(introTitle, local > 0.02 && local < 0.1)
@@ -91,13 +93,8 @@ export default function create(): Chapter {
         visit.textContent = isPreview(w.url) ? 'Preview site ↗' : 'Visit site ↗'
       }
     },
-    camera(local, _frame, out) {
-      const b = beat(local, FEATURED.length, 0.1, 0.84)
-      const x = local < 0.1 ? -2 : local > 0.84 ? (FEATURED.length - 1) * 5 + 2 : b.idx * 5 + (b.phase - 0.5) * 0.8
-      out.position.set(x + 1.2, 0.6, 5)
-      out.target.set(x, 0.3, 0)
-      out.fov = 42
-      out.parallax = 0.3
+    camera(local, frame, out) {
+      frontierCamera(out, frame, frontierY('work', local))
     },
   }
 }

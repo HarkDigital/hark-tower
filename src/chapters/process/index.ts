@@ -3,7 +3,7 @@ import type { Chapter } from '../../core/types'
 import { el, rise, setRise, reveal } from '../../core/dom'
 import { PROCESS, STATS } from '../../content'
 import { smoothstep } from '../../core/math'
-import { beat, placeholderFloor, placeholderMark, framedCamera } from '../common'
+import { beat, placeholderFloor, placeholderMark, framedCamera, applySite, frontierCamera, frontierY } from '../common'
 import '../chapter.css'
 
 /*
@@ -14,7 +14,8 @@ const SHOW = [STATS[0], STATS[2], STATS[1]] // 10 years, $1M+, 15
 
 export default function create(): Chapter {
   const group = new THREE.Group()
-  const mark = placeholderMark('#ffd84a')
+  const mark = placeholderMark()
+  mark.visible = false
   mark.scale.setScalar(1.4)
   group.add(mark, placeholderFloor())
   const B = beat(0, PROCESS.length, 0.1, 0.78)
@@ -39,7 +40,8 @@ export default function create(): Chapter {
         el('p', 'hud-body', s.label, stats)
       }
     },
-    update(local, frame) {
+    update(local, frame, ctx) {
+      applySite(ctx, 'process', local)
       const b = beat(local, PROCESS.length, 0.1, 0.78)
       mark.rotation.y = frame.time * 0.2 + b.idx * (Math.PI / 2)
       reveal(head, smoothstep(0.03, 0.08, local) * (1 - smoothstep(0.94, 0.97, local)))
@@ -53,8 +55,8 @@ export default function create(): Chapter {
         stepText.textContent = PROCESS[shown].text
       }
     },
-    camera(_local, frame, out) {
-      framedCamera(out, frame)
+    camera(local, frame, out) {
+      frontierCamera(out, frame, frontierY('process', local))
     },
   }
 }

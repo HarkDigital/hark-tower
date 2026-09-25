@@ -1,15 +1,15 @@
 /* ------------------------------------------------------------------
-   Hark concept starter — base tokens, layout and the shared HUD vocabulary.
+   Hark · Tower — base tokens, layout and the shared HUD vocabulary.
 
-   Two parts:
-   1. STRUCTURE (keep): #gl / #track / #stages / .stage / #chrome / #loader,
-      the accessible copy layer (.sr-copy focus pills), .skip-link, reduced
-      motion. The engine and UI depend on these.
-   2. THEME (replace): tokens, fonts and the HUD vocabulary every chapter
-      uses — .hud-eyebrow .hud-title .hud-h2 .hud-body .hud-quote .hud-label
-      .hud-tags/.hud-tag .hud-btn(--ghost) .hud-panel .hud-rule .callout*
-      and the .rise word reveal. Stages over dark/light scenes can flip with
-      a class (e.g. .is-dark) that redefines the --fg tokens.
+   A skyscraper going up in steel and glass. The page speaks site-signage
+   and drawing-set: graphite spec plates with a hazard-yellow top rail and
+   corner bolts, Big Shoulders Display (the Chicago face — the city that
+   invented the skyscraper) in heavy uppercase, Archivo for reading, IBM Plex
+   Mono for annotations like a drawing's dimension labels. Headline words are
+   HOISTED into place: they drop in from above and settle like a landed beam.
+
+   STRUCTURE (keep): #gl / #track / #stages / .stage / #chrome / #loader,
+   the accessible copy layer (.sr-copy focus pills), .skip-link, reduced motion.
 
    Rules learned the hard way: no color-mix() (Safari 15 + the minifier drops
    fallbacks — use rgba tokens); write -webkit-backdrop-filter BEFORE
@@ -17,24 +17,30 @@
    ------------------------------------------------------------------ */
 
 :root {
-  /* THEME tokens */
-  --bg: #0d0f12;
-  --ink: #0d0f12;
-  --paper: #f4f2ee;
-  --paper-2: #f4f2ee;
+  --bg: #0e1114;
+  --ink: #0e1114;
+  --graphite: #1c2127;
+  --steel: #4a525b;
+  --paper: #f4f1ea;
+  --paper-2: #f4f1ea;
+  --yellow: #f2b705;
+  --orange: #ff6a1a;
   --signal: #00ff85;
   --signal-deep: #00a857;
+  --blueprint: #0d3566;
+  --drawline: #8fd6ff;
 
-  --fg: var(--paper);
-  --fg-muted: rgba(244, 242, 238, 0.78);
-  --fg-faint: rgba(244, 242, 238, 0.64);
-  --line: rgba(244, 242, 238, 0.16);
-  --line-strong: rgba(244, 242, 238, 0.38);
-  --panel: rgba(13, 15, 18, 0.72);
+  --fg: #f4f1ea;
+  --fg-muted: rgba(244, 241, 234, 0.84);
+  --fg-faint: rgba(244, 241, 234, 0.68);
+  --line: rgba(244, 241, 234, 0.18);
+  --line-strong: rgba(244, 241, 234, 0.42);
+  --panel: rgba(16, 19, 23, 0.86);
+  --hazard: repeating-linear-gradient(135deg, #f2b705 0 6px, #16191d 6px 12px);
 
-  --font-display: 'Inter Variable', system-ui, sans-serif;
-  --font-sans: 'Inter Variable', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+  --font-display: 'Big Shoulders Display Variable', 'Archivo Variable', 'Arial Narrow', sans-serif;
+  --font-sans: 'Archivo Variable', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
 
   /* STRUCTURE: the persistent chrome owns these bands (+ notch insets) */
   --gutter: max(clamp(16px, 3.4vw, 48px), env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
@@ -44,14 +50,23 @@
   color-scheme: dark;
 }
 
-/* example tone flip for light scenes: add .is-light to a stage */
+/* Short landscape (a phone turned sideways after 'Continue anyway'): thin
+   chrome bands so the plates between them have room. */
+@media (orientation: landscape) and (max-height: 500px) {
+  :root {
+    --safe-top: calc(56px + env(safe-area-inset-top, 0px));
+    --safe-bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* tone flip for a light stage (e.g. paper drawings): add .is-light */
 .is-light {
   --fg: var(--ink);
-  --fg-muted: rgba(13, 15, 18, 0.74);
-  --fg-faint: rgba(13, 15, 18, 0.64);
-  --line: rgba(13, 15, 18, 0.14);
-  --line-strong: rgba(13, 15, 18, 0.32);
-  --panel: rgba(244, 242, 238, 0.82);
+  --fg-muted: rgba(14, 17, 20, 0.78);
+  --fg-faint: rgba(14, 17, 20, 0.66);
+  --line: rgba(14, 17, 20, 0.16);
+  --line-strong: rgba(14, 17, 20, 0.36);
+  --panel: rgba(244, 241, 234, 0.92);
 }
 
 *,
@@ -194,15 +209,15 @@ a {
 }
 
 :focus-visible {
-  outline: 3px solid var(--ink);
+  outline: 3px solid var(--yellow);
   outline-offset: 3px;
 }
 
-.is-dark :focus-visible {
-  outline-color: var(--paper-2);
+.is-light :focus-visible {
+  outline-color: var(--ink);
 }
 
-/* ---------------- HUD vocabulary (THEME) ---------------- */
+/* ---------------- HUD vocabulary ---------------- */
 
 .hud-label {
   font-family: var(--font-mono);
@@ -213,12 +228,14 @@ a {
   line-height: 1.5;
 }
 
+/* eyebrow: a hazard chip, then mono caps */
 .hud-eyebrow {
   display: inline-flex;
   align-items: center;
   gap: 10px;
   font-family: var(--font-mono);
   font-size: 11.5px;
+  font-weight: 500;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--fg);
@@ -226,33 +243,37 @@ a {
 }
 .hud-eyebrow::before {
   content: '';
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--signal);
+  width: 22px;
+  height: 8px;
+  background: var(--hazard);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
 
 .hud-title {
   font-family: var(--font-display);
-  font-weight: 700;
-  letter-spacing: -0.035em;
-  line-height: 0.92;
-  font-size: clamp(3rem, 8vw, 8rem);
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.004em;
+  line-height: 0.86;
+  font-size: clamp(3.4rem, 9.4vw, 9.8rem);
   margin: 0;
   color: var(--fg);
   text-wrap: balance;
+  text-shadow: 0 2px 28px rgba(8, 10, 14, 0.38);
 }
 .hud-h2 {
   font-family: var(--font-display);
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  line-height: 0.98;
-  font-size: clamp(2rem, 4.4vw, 4.2rem);
+  font-weight: 820;
+  text-transform: uppercase;
+  letter-spacing: 0.006em;
+  line-height: 0.9;
+  font-size: clamp(2.5rem, 5.4vw, 5.4rem);
   margin: 0;
   color: var(--fg);
   text-wrap: balance;
+  text-shadow: 0 2px 22px rgba(8, 10, 14, 0.35);
 }
-/* <em> = the accent word */
+/* <em> = the accent words: Hark signal green (the crown light) */
 .hud-title em,
 .hud-h2 em {
   font-style: normal;
@@ -265,19 +286,20 @@ a {
 
 .hud-body {
   font-family: var(--font-sans);
-  font-size: clamp(15px, 1.15vw, 17px);
-  line-height: 1.55;
+  font-size: clamp(15px, 1.12vw, 17px);
+  line-height: 1.58;
   color: var(--fg-muted);
-  max-width: 42ch;
+  max-width: 44ch;
   margin: 0;
 }
 
 .hud-quote {
-  font-family: var(--font-display);
+  font-family: var(--font-sans);
   font-weight: 500;
-  font-size: clamp(1.4rem, 2.6vw, 2.4rem);
-  line-height: 1.18;
-  letter-spacing: -0.015em;
+  font-stretch: 92%;
+  font-size: clamp(1.3rem, 2.3vw, 2.1rem);
+  line-height: 1.22;
+  letter-spacing: -0.012em;
   color: var(--fg);
   margin: 0;
   text-wrap: pretty;
@@ -297,61 +319,88 @@ a {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--fg);
-  padding: 4px 9px;
+  padding: 4px 8px;
   border: 1px solid var(--line-strong);
-  border-radius: 999px;
+  border-radius: 2px;
 }
 
+/* buttons: site-signage plates */
 .hud-btn {
   display: inline-flex;
   align-items: center;
   gap: 10px;
   font-family: var(--font-mono);
   font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-weight: 500;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   text-decoration: none;
-  color: var(--bg);
+  color: var(--ink);
   background: var(--signal);
   padding: 13px 20px;
   border: 0;
-  border-radius: 999px;
+  border-radius: 2px;
   cursor: pointer;
-  transition: transform 0.2s ease;
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.22);
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .hud-btn:hover,
 .hud-btn:focus-visible {
   transform: translateY(-2px);
 }
 .hud-btn--ghost {
-  background: transparent;
+  background: rgba(16, 19, 23, 0.45);
   color: var(--fg);
-  box-shadow: inset 0 0 0 1px var(--line-strong);
+  box-shadow: inset 0 0 0 1.5px var(--line-strong);
 }
 
+/* the spec plate: graphite, a hazard-yellow top rail, four corner bolts */
 .hud-panel {
   position: relative;
-  padding: 20px 22px;
-  background: var(--panel);
+  padding: 22px 24px 20px;
+  background:
+    radial-gradient(circle at 9px 13px, #7d858e 0 2.2px, transparent 2.8px),
+    radial-gradient(circle at calc(100% - 9px) 13px, #7d858e 0 2.2px, transparent 2.8px),
+    radial-gradient(circle at 9px calc(100% - 9px), #7d858e 0 2.2px, transparent 2.8px),
+    radial-gradient(circle at calc(100% - 9px) calc(100% - 9px), #7d858e 0 2.2px, transparent 2.8px),
+    var(--panel);
   border: 1px solid var(--line);
-  border-radius: 14px;
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
+  border-top: 3px solid var(--yellow);
+  border-radius: 2px;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
 }
 
+/* a dimension line: dashed with end ticks */
 .hud-rule {
+  position: relative;
   height: 1px;
   border: 0;
-  background: var(--line);
-  margin: 14px 0;
+  background: repeating-linear-gradient(90deg, var(--line-strong) 0 6px, transparent 6px 10px);
+  margin: 16px 0;
+}
+.hud-rule::before,
+.hud-rule::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  width: 1px;
+  height: 9px;
+  background: var(--line-strong);
+}
+.hud-rule::before {
+  left: 0;
+}
+.hud-rule::after {
+  right: 0;
 }
 
 .hud-mono {
   font-family: var(--font-mono);
 }
 
-/* ---------------- 3D-anchored callouts (src/core/dom.ts) ---------------- */
+/* ---------------- 3D-anchored callouts (src/core/dom.ts) — drawing annotations ---------------- */
 
 .callout {
   position: absolute;
@@ -368,8 +417,8 @@ a {
 }
 .callout-svg path {
   fill: none;
-  stroke: var(--fg);
-  stroke-opacity: 0.6;
+  stroke: var(--drawline);
+  stroke-opacity: 0.85;
   stroke-width: 1;
 }
 .callout-dot {
@@ -378,8 +427,9 @@ a {
   top: -4px;
   width: 8px;
   height: 8px;
-  border-radius: 50%;
-  background: var(--signal);
+  border: 1.5px solid var(--drawline);
+  background: transparent;
+  transform: rotate(45deg);
 }
 .callout-label {
   position: absolute;
@@ -392,13 +442,16 @@ a {
   text-transform: uppercase;
   color: var(--fg);
   line-height: 1.5;
+  padding: 2px 7px;
+  background: rgba(13, 53, 102, 0.82);
+  border: 1px solid rgba(143, 214, 255, 0.5);
 }
 
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    transition-duration: 0.01ms !important;
+    transition-duration: 0s !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
   }
@@ -408,13 +461,16 @@ a {
 }
 
 /* ---------------- word reveal (src/core/dom.ts rise/setRise) ----------------
-   THEME: restyle the motion (Orbit decoded, Resonance rose, Press stamped,
-   Town popped, Arcade blinked in). Neutral: a short rise + fade. */
+   Tower: words are HOISTED into place — they drop in from above, one after
+   another, and settle with the tiny overshoot of a landed beam. */
 .rise .rise-w {
   display: inline-block;
   vertical-align: top;
   visibility: hidden;
-  transition: visibility 0s linear 0.3s;
+  overflow: hidden;
+  padding-top: 0.08em;
+  margin-top: -0.08em;
+  transition: visibility 0s linear 0.35s;
 }
 .rise.is-in .rise-w {
   visibility: visible;
@@ -422,19 +478,17 @@ a {
 }
 .rise .rise-w > span {
   display: inline-block;
-  opacity: 0;
-  transform: translate3d(0, 0.4em, 0);
-  transition:
-    transform 0.55s cubic-bezier(0.2, 0.8, 0.2, 1),
-    opacity 0.35s ease;
-  transition-delay: calc(var(--i, 0) * 35ms);
+  transform: translate3d(0, -1.05em, 0);
+  transition: transform 0.62s cubic-bezier(0.3, 1.28, 0.45, 1);
+  transition-delay: calc(var(--i, 0) * 55ms);
 }
 .rise.is-in .rise-w > span {
-  opacity: 1;
   transform: none;
 }
 .rise:not(.is-in) .rise-w > span {
-  transition-duration: 0.25s, 0.2s;
+  transform: translate3d(0, 1.05em, 0);
+  transition-duration: 0.28s;
+  transition-timing-function: cubic-bezier(0.55, 0, 0.8, 0.3);
   transition-delay: 0s;
 }
 
@@ -460,10 +514,11 @@ a {
   bottom: calc(var(--safe-bottom) + 8px);
   transform: translateX(-50%);
   z-index: 40;
-  max-width: calc(100vw - 2 * var(--gutter));
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  width: max-content;
+  max-width: min(560px, calc(100vw - 2 * var(--gutter)));
+  white-space: normal;
+  text-align: center;
+  line-height: 1.35;
   font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: 0.08em;
@@ -472,10 +527,11 @@ a {
   color: var(--ink);
   background: var(--signal);
   padding: 12px 18px;
-  border-radius: 999px;
+  border-radius: 2px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
-  outline: 2px solid var(--signal);
-  outline-offset: 3px;
+  border: 2px solid var(--ink);
+  outline: 2px solid var(--yellow);
+  outline-offset: 0;
 }
 .sr-copy :is(a, button):focus .sr-note {
   display: none;

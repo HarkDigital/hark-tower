@@ -3,7 +3,7 @@ import type { Chapter } from '../../core/types'
 import { el, rise, setRise, reveal } from '../../core/dom'
 import { BRAND, CONTACT, OTHER_CONCEPTS } from '../../content'
 import { smoothstep } from '../../core/math'
-import { placeholderFloor, placeholderMark, framedCamera } from '../common'
+import { placeholderFloor, placeholderMark, framedCamera, applySite, frontierCamera, frontierY } from '../common'
 import '../chapter.css'
 
 /*
@@ -38,6 +38,7 @@ async function copyText(text: string) {
 export default function create(): Chapter {
   const group = new THREE.Group()
   const mark = placeholderMark()
+  mark.visible = false
   mark.scale.setScalar(1.8)
   group.add(mark, placeholderFloor())
   let copy: HTMLElement, title: HTMLElement, signoff: HTMLElement
@@ -73,14 +74,15 @@ export default function create(): Chapter {
       signoff = el('p', 'hud-label', 'Thanks for listening.', ctx.stage)
       signoff.style.cssText = 'position:absolute;right:var(--gutter);top:var(--safe-top)'
     },
-    update(local, frame) {
+    update(local, frame, ctx) {
+      applySite(ctx, 'contact', local)
       mark.rotation.y = frame.time * 0.25
       reveal(copy, smoothstep(0.1, 0.2, local))
       setRise(title, local > 0.12)
       reveal(signoff, smoothstep(0.8, 0.86, local))
     },
-    camera(_local, frame, out) {
-      framedCamera(out, frame)
+    camera(local, frame, out) {
+      frontierCamera(out, frame, frontierY('contact', local))
     },
   }
 }

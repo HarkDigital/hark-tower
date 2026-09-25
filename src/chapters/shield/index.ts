@@ -3,7 +3,7 @@ import type { Chapter } from '../../core/types'
 import { el, rise, setRise, reveal } from '../../core/dom'
 import { SECURITY, STATS } from '../../content'
 import { smoothstep } from '../../core/math'
-import { placeholderFloor, placeholderMark, framedCamera } from '../common'
+import { placeholderFloor, placeholderMark, framedCamera, applySite, frontierCamera, frontierY } from '../common'
 import '../chapter.css'
 
 /*
@@ -12,7 +12,8 @@ import '../chapter.css'
  */
 export default function create(): Chapter {
   const group = new THREE.Group()
-  const mark = placeholderMark('#ff5a6e')
+  const mark = placeholderMark()
+  mark.visible = false
   mark.scale.setScalar(1.6)
   group.add(mark, placeholderFloor())
   const stat = STATS.find(s => s.value === '24/7')!
@@ -33,16 +34,17 @@ export default function create(): Chapter {
       cta.href = SECURITY.href
     },
     update(local, frame, ctx) {
+      applySite(ctx, 'shield', local)
       const threat = 1 - smoothstep(0.3, 0.4, local)
       mark.rotation.y = frame.time * 0.3
       mark.position.x = threat * 0.04 * Math.sin(frame.time * 40) * (ctx.reducedMotion ? 0 : 1)
       reveal(copy, smoothstep(0.35, 0.42, local) * (1 - smoothstep(0.94, 0.97, local)))
       setRise(title, local > 0.36 && local < 0.95)
       reveal(calm, smoothstep(0.7, 0.76, local) * (1 - smoothstep(0.94, 0.97, local)), 0)
-      ctx.world.params.bottom = threat > 0.5 ? '#3a1d24' : '#2a2f3a'
+      void threat
     },
-    camera(_local, frame, out) {
-      framedCamera(out, frame)
+    camera(local, frame, out) {
+      frontierCamera(out, frame, frontierY('shield', local))
     },
   }
 }

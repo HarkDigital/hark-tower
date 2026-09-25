@@ -119,16 +119,17 @@ export class Engine {
     //   cinematic ones, NoToneMapping suits stylised post passes (palette
     //   snaps, ink densities). Shadows cost real GPU time — enable only if
     //   the look needs them (then keep the shadow frustum tight).
-    this.renderer.setClearColor(0x0d0f12, 1)
+    // Tower: ACES for a filmic golden-hour roll-off; one sun shadow map on desktop.
+    this.renderer.setClearColor(0xcfdbe4, 1)
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
-    this.renderer.toneMapping = THREE.NeutralToneMapping
-    this.renderer.shadowMap.enabled = false
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping
+    this.renderer.shadowMap.enabled = !this.mobile
     this.renderer.shadowMap.type = THREE.PCFShadowMap
     this.renderer.toneMappingExposure = 1
     this.renderer.info.autoReset = false
     this.renderer.debug.checkShaderErrors = !import.meta.env.PROD
 
-    this.world = new World(this.scene, this.mobile)
+    this.world = new World(this.scene, this.mobile, this.renderer)
     this.scene.add(this.world.object)
     this.assets = new Assets(this.renderer)
     // MSAA only where it pays: 1x desktop screens. Retina is already supersampled,

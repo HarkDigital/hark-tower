@@ -3,7 +3,7 @@ import type { Chapter } from '../../core/types'
 import { el, rise, setRise, reveal } from '../../core/dom'
 import { SECTIONS, SERVICES } from '../../content'
 import { smoothstep } from '../../core/math'
-import { beat, placeholderFloor, placeholderMark, framedCamera } from '../common'
+import { beat, placeholderFloor, placeholderMark, framedCamera, applySite, frontierCamera, frontierY } from '../common'
 import '../chapter.css'
 
 /*
@@ -13,7 +13,8 @@ import '../chapter.css'
  */
 export default function create(): Chapter {
   const group = new THREE.Group()
-  const mark = placeholderMark('#3a7bff')
+  const mark = placeholderMark()
+  mark.visible = false
   mark.scale.setScalar(1.6)
   group.add(mark, placeholderFloor())
   const B = beat(0, SERVICES.length, 0.08, 0.94)
@@ -34,7 +35,8 @@ export default function create(): Chapter {
       blurb = el('p', 'hud-body', '', card)
       tags = el('ul', 'hud-tags', undefined, card)
     },
-    update(local, frame) {
+    update(local, frame, ctx) {
+      applySite(ctx, 'services', local)
       const b = beat(local, SERVICES.length, 0.08, 0.94)
       mark.rotation.y = local * Math.PI * 4 + frame.time * 0.2
       reveal(intro, 1 - smoothstep(0.07, 0.1, local))
@@ -49,8 +51,8 @@ export default function create(): Chapter {
         tags.replaceChildren(...s.tags.map(t => Object.assign(document.createElement('li'), { className: 'hud-tag', textContent: t })))
       }
     },
-    camera(_local, frame, out) {
-      framedCamera(out, frame)
+    camera(local, frame, out) {
+      frontierCamera(out, frame, frontierY('services', local))
     },
   }
 }
