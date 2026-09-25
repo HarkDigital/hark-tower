@@ -388,6 +388,14 @@ export class World {
     return out.copy(this.tmpA.set(a)).lerp(this.tmpB.set(b), k)
   }
 
+  /**
+   * Give the scene a real environment before shader prewarm: lit programs key
+   * on the env map, so compiling without one builds programs nobody uses.
+   */
+  warmEnv(t = 0) {
+    this.envFor(t, 0)
+  }
+
   /** Capture the sky (+ skyline ring) at keyframe `idx` into a PMREM. */
   private buildEnv(idx: number) {
     if (!this.pmrem || this.envMaps[idx]) return
