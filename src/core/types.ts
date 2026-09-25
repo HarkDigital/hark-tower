@@ -99,5 +99,7 @@ export interface ChapterDef {
   length: number
   /** Local progress where nav jumps land (just past the cut, copy settled). Default derives from length. */
   landing?: number
+  /** Local progress where the section headline shows (heading Tab stop lands here). */
+  intro?: number
   load: () => Promise<{ default: ChapterFactory }>
 }

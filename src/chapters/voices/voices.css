@@ -1,0 +1,285 @@
+/* ------------------------------------------------------------------
+   Tenants (voices) — the section headline, the quote spec plate with its
+   elevator-panel progress row, and the drawing annotation on the window.
+   Every selector is scoped under .stage-voices.
+   ------------------------------------------------------------------ */
+
+/* the section title on a site signboard: a graphite spec plate keeps it
+   legible over bright sky, cloud and glass alike */
+.stage-voices .vc-intro {
+  position: absolute;
+  left: var(--gutter);
+  top: var(--safe-top);
+  width: fit-content;
+  max-width: calc(100vw - 2 * var(--gutter));
+  margin: 0;
+  padding: 18px 26px 20px 22px;
+  display: grid;
+  justify-items: start;
+  gap: clamp(10px, 1.6vh, 16px);
+  opacity: 0;
+  visibility: hidden;
+  transform: translate3d(0, -14px, 0);
+  transition:
+    opacity 0.3s ease,
+    transform 0.35s ease,
+    visibility 0s linear 0.35s;
+}
+.stage-voices .vc-intro.is-on {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition:
+    opacity 0.45s ease,
+    transform 0.8s cubic-bezier(0.3, 1.2, 0.45, 1),
+    visibility 0s linear 0s;
+}
+.stage-voices .vc-title {
+  font-size: clamp(2.6rem, 5.6vw, 6rem);
+  line-height: 0.88;
+  text-shadow: none;
+}
+
+/* ---------------- the quote plate ---------------- */
+
+.stage-voices .vc-plate {
+  position: absolute;
+  left: var(--gutter);
+  bottom: var(--safe-bottom);
+  width: min(520px, 40vw);
+  margin: 0;
+  padding: 20px 24px 22px;
+  display: grid;
+  gap: 16px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translate3d(0, -18px, 0);
+  transition:
+    opacity 0.35s ease,
+    transform 0.4s ease,
+    visibility 0s linear 0.4s;
+}
+.stage-voices .vc-plate.is-on {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition:
+    opacity 0.5s ease,
+    transform 0.8s cubic-bezier(0.3, 1.2, 0.45, 1),
+    visibility 0s linear 0s;
+}
+
+.stage-voices .vc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--line-strong);
+}
+.stage-voices .vc-count {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.stage-voices .vc-count b {
+  font-weight: 500;
+  color: var(--yellow);
+}
+
+/* the progress row: an elevator's floor buttons, the current one lit */
+.stage-voices .vc-lift {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.stage-voices .vc-lift-b {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: rgba(244, 241, 234, 0.03);
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color 0.4s ease,
+    border-color 0.4s ease,
+    background-color 0.4s ease,
+    box-shadow 0.4s ease;
+}
+.stage-voices .vc-lift-b.is-past {
+  color: var(--fg);
+  background: rgba(244, 241, 234, 0.1);
+}
+.stage-voices .vc-lift-b.is-on {
+  color: var(--ink);
+  border-color: var(--signal);
+  background: var(--signal);
+  box-shadow: 0 0 0 3px rgba(0, 255, 133, 0.18);
+}
+.stage-voices .vc-lift-b:hover {
+  border-color: var(--fg);
+}
+
+/* the cards stack in one place; the stack's height glides to the active one */
+.stage-voices .vc-stack {
+  position: relative;
+  height: 0;
+  transition: height 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.stage-voices .vc-card {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  visibility: hidden;
+  transition: visibility 0s linear 0.35s;
+}
+.stage-voices .vc-card.is-on {
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+.stage-voices .vc-quote {
+  margin: 0;
+  font-size: clamp(1.25rem, 1.9vw, 1.95rem);
+  line-height: 1.24;
+  /* hang the opening mark in the margin */
+  text-indent: -0.42em;
+}
+.stage-voices .vc-card--long .vc-quote {
+  font-size: clamp(1.14rem, 1.66vw, 1.7rem);
+}
+.stage-voices .vc-quote .rise-w,
+.stage-voices .vc-quote .rise-w > span {
+  text-indent: 0;
+}
+/* the incoming quote waits for the outgoing one to clear; even long quotes
+   are hoisted in ~1.1 s */
+.stage-voices .vc-card .rise.is-in .rise-w > span {
+  transition-delay: calc(0.26s + min(var(--i, 0), 28) * 17ms);
+}
+
+.stage-voices .vc-who {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin: 16px 0 0;
+}
+.stage-voices .vc-who::before {
+  content: '';
+  width: 22px;
+  height: 6px;
+  background: var(--hazard);
+}
+.stage-voices .vc-name {
+  color: var(--fg);
+}
+.stage-voices .vc-co {
+  color: var(--fg-muted);
+}
+.stage-voices .vc-card .vc-who .rise.is-in .rise-w > span {
+  transition-delay: calc(0.5s + var(--i, 0) * 30ms);
+}
+
+/* ---------------- the annotation on the tenant's window ---------------- */
+
+.stage-voices .vc-callout .callout-svg path {
+  stroke-dasharray: 240;
+  stroke-dashoffset: 240;
+  transition: stroke-dashoffset 0.3s ease;
+}
+.stage-voices .vc-callout.is-drawn .callout-svg path {
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 0.9s cubic-bezier(0.3, 0.7, 0.2, 1) 0.1s;
+}
+.stage-voices .vc-callout .callout-label {
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.stage-voices .vc-callout.is-drawn .callout-label {
+  opacity: 1;
+  transition: opacity 0.45s ease 0.6s;
+}
+
+/* ---------------- portrait: the office above, the plate below ---------------- */
+
+@media (max-aspect-ratio: 1/1) {
+  .stage-voices .vc-intro {
+    padding: 14px 18px 16px 16px;
+  }
+  .stage-voices .vc-title {
+    font-size: clamp(2.2rem, 10vw, 4.6rem);
+  }
+  .stage-voices .vc-plate {
+    left: var(--gutter);
+    right: var(--gutter);
+    width: auto;
+    max-width: 620px;
+    margin: 0 auto;
+    padding: 16px 18px 18px;
+    gap: 12px;
+  }
+  .stage-voices .vc-head {
+    padding-bottom: 10px;
+  }
+  .stage-voices .vc-quote {
+    font-size: clamp(1.02rem, 4.5vw, 1.55rem);
+    line-height: 1.27;
+  }
+  .stage-voices .vc-card--long .vc-quote {
+    font-size: clamp(0.98rem, 4.15vw, 1.42rem);
+  }
+  .stage-voices .vc-who {
+    margin-top: 12px;
+  }
+}
+
+@media (max-width: 420px) {
+  .stage-voices .vc-count-k {
+    display: none;
+  }
+  .stage-voices .vc-lift {
+    gap: 3px;
+  }
+}
+
+/* short landscape phones: thin chrome bands, a compact plate */
+@media (orientation: landscape) and (max-height: 500px) {
+  .stage-voices .vc-title {
+    font-size: clamp(1.9rem, 5.4vw, 2.8rem);
+  }
+  .stage-voices .vc-intro {
+    gap: 6px;
+    padding: 10px 16px 12px 14px;
+  }
+  .stage-voices .vc-plate {
+    width: min(440px, 48vw);
+    padding: 11px 16px 13px;
+    gap: 8px;
+  }
+  .stage-voices .vc-head {
+    padding-bottom: 7px;
+  }
+  .stage-voices .vc-quote,
+  .stage-voices .vc-card--long .vc-quote {
+    font-size: clamp(0.9rem, 2.1vw, 1.04rem);
+    line-height: 1.28;
+  }
+  .stage-voices .vc-who {
+    margin-top: 7px;
+  }
+}

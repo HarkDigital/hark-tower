@@ -1,0 +1,310 @@
+/* HERO — "Groundbreaking". Everything scoped under .stage-hero. */
+
+/* ---------------- intro: a spec plate over the dawn sky ---------------- */
+.stage-hero .th-intro {
+  position: absolute;
+  left: var(--gutter);
+  top: var(--safe-top);
+  width: min(420px, calc(100vw - 2 * var(--gutter)));
+  display: grid;
+  gap: 14px;
+  padding: 22px 24px 18px;
+}
+.stage-hero .th-manifesto {
+  color: rgba(244, 241, 234, 0.9);
+  max-width: 40ch;
+}
+.stage-hero .th-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0 0;
+  color: rgba(244, 241, 234, 0.86);
+}
+.stage-hero .th-hint-arrow {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgba(242, 183, 5, 0.7);
+  color: var(--yellow);
+  animation: th-nudge 1.8s cubic-bezier(0.45, 0, 0.3, 1) 1.6s 3 both;
+}
+.stage-hero .th-hint-arrow svg {
+  display: block;
+  width: 9px;
+  height: 14px;
+}
+@keyframes th-nudge {
+  0%,
+  100% {
+    transform: none;
+  }
+  45% {
+    transform: translate3d(0, 4px, 0);
+  }
+}
+
+/* ---------------- title block: the drawing sheet for each beat ---------------- */
+.stage-hero .th-sheet {
+  position: absolute;
+  left: var(--gutter);
+  bottom: var(--safe-bottom);
+  width: min(340px, calc(100vw - 2 * var(--gutter)));
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--paper);
+  background: rgba(13, 53, 102, 0.9);
+  border: 1px solid rgba(143, 214, 255, 0.55);
+  box-shadow: 0 16px 36px rgba(4, 12, 26, 0.35);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.stage-hero .th-sheet-head {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(143, 214, 255, 0.45);
+}
+.stage-hero .th-sheet-proj {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 19px;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+.stage-hero .th-sheet-proj::before {
+  content: '';
+  width: 18px;
+  height: 7px;
+  background: var(--hazard);
+}
+.stage-hero .th-sheet-no {
+  display: flex;
+  align-items: center;
+  padding: 9px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--drawline);
+}
+.stage-hero .th-sheet-title {
+  padding: 10px 12px 9px;
+  font-size: 12px;
+  font-weight: 500;
+  border-bottom: 1px solid rgba(143, 214, 255, 0.45);
+}
+.stage-hero .th-sheet.is-swap .th-sheet-no,
+.stage-hero .th-sheet.is-swap .th-sheet-title {
+  animation: th-swap 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) 1 both;
+}
+@keyframes th-swap {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -6px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.stage-hero .th-sheet-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+}
+.stage-hero .th-sheet-cell {
+  display: grid;
+  gap: 3px;
+  padding: 8px 12px 9px;
+  border-right: 1px solid rgba(143, 214, 255, 0.3);
+}
+.stage-hero .th-sheet-cell:last-child {
+  border-right: 0;
+}
+.stage-hero .th-sheet-cell span {
+  font-size: 9.5px;
+  color: rgba(244, 241, 234, 0.78);
+  white-space: nowrap;
+}
+.stage-hero .th-sheet-cell b {
+  font-weight: 500;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.stage-hero .th-sheet-foot {
+  padding: 7px 12px 8px;
+  font-size: 10px;
+  color: rgba(244, 241, 234, 0.8);
+  border-top: 1px solid rgba(143, 214, 255, 0.3);
+}
+
+/* ---------------- callouts: drawing notes ---------------- */
+.stage-hero .th-callout .callout-label {
+  background: rgba(13, 53, 102, 0.9);
+}
+
+/* ---------------- payoff: tagline + CTAs ---------------- */
+.stage-hero .th-payoff {
+  position: absolute;
+  top: var(--safe-top);
+  bottom: var(--safe-bottom);
+  left: var(--gutter);
+  width: min(54vw, 820px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.stage-hero .th-payoff::before {
+  /* a soft shade behind the copy so white type holds on the bright dawn sky */
+  content: '';
+  position: absolute;
+  left: calc(-1 * var(--gutter));
+  top: -10%;
+  bottom: -10%;
+  width: 130%;
+  background: radial-gradient(ellipse at 24% 50%, rgba(10, 14, 22, 0.58), rgba(10, 14, 22, 0.3) 42%, rgba(10, 14, 22, 0) 72%);
+  pointer-events: none;
+}
+.stage-hero .th-payoff-inner {
+  position: relative;
+  display: grid;
+  gap: 22px;
+  justify-items: start;
+}
+.stage-hero .th-locale {
+  margin: 0;
+  padding: 5px 10px;
+  color: var(--paper);
+  background: rgba(16, 19, 23, 0.82);
+  border-left: 3px solid var(--yellow);
+}
+.stage-hero .th-title {
+  font-size: clamp(3.4rem, 9vw, 9.4rem);
+  text-shadow:
+    0 2px 30px rgba(8, 10, 14, 0.55),
+    0 1px 3px rgba(8, 10, 14, 0.35);
+}
+.stage-hero .th-ctas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 6px;
+}
+.stage-hero .th-ctas .hud-btn--ghost {
+  background: rgba(16, 19, 23, 0.78);
+}
+
+/* ---------------- portrait: the tower above, copy below ---------------- */
+@media (max-aspect-ratio: 1/1) {
+  .stage-hero .th-intro {
+    top: auto;
+    bottom: var(--safe-bottom);
+    right: var(--gutter);
+    width: auto;
+    max-width: 560px;
+    gap: 12px;
+    padding: 18px 20px 16px;
+  }
+  .stage-hero .th-sheet {
+    right: var(--gutter);
+    width: auto;
+    max-width: 560px;
+  }
+  .stage-hero .th-payoff {
+    right: var(--gutter);
+    width: auto;
+    justify-content: flex-end;
+  }
+  .stage-hero .th-payoff::before {
+    left: calc(-1 * var(--gutter));
+    right: calc(-1 * var(--gutter));
+    top: 30%;
+    bottom: -20%;
+    width: auto;
+    background: linear-gradient(180deg, rgba(10, 14, 22, 0), rgba(10, 14, 22, 0.5) 55%);
+  }
+  .stage-hero .th-payoff-inner {
+    gap: 16px;
+  }
+  .stage-hero .th-title {
+    font-size: clamp(3rem, 15vw, 6.6rem);
+  }
+}
+
+@media (max-width: 520px) {
+  .stage-hero .th-manifesto {
+    font-size: 15px;
+    line-height: 1.52;
+  }
+  .stage-hero .th-sheet-cell {
+    padding: 7px 8px 8px;
+  }
+  .stage-hero .th-sheet-cell span {
+    font-size: 9px;
+  }
+  .stage-hero .th-sheet-cell b {
+    font-size: 11px;
+  }
+  .stage-hero .th-ctas .hud-btn {
+    padding: 12px 16px;
+  }
+}
+
+/* short landscape phones: thin bands, compact plates */
+@media (orientation: landscape) and (max-height: 500px) {
+  .stage-hero .th-intro {
+    gap: 8px;
+    width: min(360px, 46vw);
+    padding: 14px 16px 12px;
+  }
+  .stage-hero .th-manifesto {
+    font-size: 13.5px;
+    line-height: 1.45;
+  }
+  .stage-hero .th-sheet {
+    width: min(300px, 44vw);
+  }
+  .stage-hero .th-sheet-foot {
+    display: none;
+  }
+  .stage-hero .th-sheet-proj {
+    font-size: 16px;
+    padding: 7px 10px;
+  }
+  .stage-hero .th-sheet-title {
+    padding: 7px 10px;
+    font-size: 11px;
+  }
+  .stage-hero .th-sheet-cell {
+    padding: 6px 8px;
+  }
+  .stage-hero .th-payoff {
+    width: min(38vw, 360px);
+  }
+  .stage-hero .th-payoff-inner {
+    gap: 10px;
+  }
+  .stage-hero .th-title {
+    font-size: clamp(2.2rem, 7.6vw, 3.6rem);
+  }
+  .stage-hero .th-ctas {
+    margin-top: 0;
+  }
+  .stage-hero .th-ctas .hud-btn {
+    padding: 10px 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-hero .th-hint-arrow,
+  .stage-hero .th-sheet.is-swap .th-sheet-no,
+  .stage-hero .th-sheet.is-swap .th-sheet-title {
+    animation: none;
+  }
+}

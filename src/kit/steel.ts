@@ -19,6 +19,10 @@ import * as THREE from 'three'
  *                             sparks.emit(worldPos, count); sparks.update(dt)
  *   dimension(a, b, label)    a blueprint dimension line with end ticks + label
  *   etchLabel(text, o)        stencil / painted text on a plane (canvas)
+ *   mergeAll(geos)            merge (position/normal; + color/uv when all have them)
+ *   tint(geo, color)          give a geometry a flat vertex colour (for mergeAll)
+ *   personGeometry(o)         a 1.8 m worker (hi-vis vest, hard hat), vertex-coloured;
+ *                             pair with MAT.person()
  *
  * Units are metres. One floor is FLOOR_H = 4 m; the tower is 30 x 30 m.
  */
@@ -67,6 +71,8 @@ export const MAT = {
   craneYellow: () => once('craneYellow', () => new THREE.MeshStandardMaterial({ color: T.craneYellow, metalness: 0.3, roughness: 0.5 })),
   safety: () => once('safety', () => new THREE.MeshStandardMaterial({ color: T.safety, metalness: 0.1, roughness: 0.6 })),
   rubber: () => once('rubber', () => new THREE.MeshStandardMaterial({ color: '#15181b', metalness: 0, roughness: 0.85 })),
+  /** vertex-coloured matte (personGeometry, site props built with tint()) */
+  person: () => once('person', () => new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0, roughness: 0.8 })),
   /** emissive Hark green (crown, status lights); blooms */
   signal: (strength = 3) =>
     once(`signal:${strength}`, () => new THREE.MeshBasicMaterial({ color: new THREE.Color(T.signal).multiplyScalar(strength), toneMapped: false })),
@@ -165,7 +171,10 @@ export function latticeGeometry(o: { len: number; size: number; chord?: number; 
   return mergeAll(parts)
 }
 
-/** Merge non-indexed-compatible geometries (position/normal only). */
+/**
+ * Merge geometries into one non-indexed geometry: position + normal always;
+ * `color` and `uv` too when every part has them (e.g. personGeometry()).
+ */
 export function mergeAll(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
   let count = 0
   const prepped = parts.map(p => {
@@ -173,13 +182,19 @@ export function mergeAll(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
     count += g.attributes.position.count
     return g
   })
+  const withColor = prepped.length > 0 && prepped.every(g => !!g.attributes.color && g.attributes.color.itemSize === 3)
+  const withUv = prepped.length > 0 && prepped.every(g => !!g.attributes.uv)
   const pos = new Float32Array(count * 3)
   const nor = new Float32Array(count * 3)
+  const col = withColor ? new Float32Array(count * 3) : null
+  const uv = withUv ? new Float32Array(count * 2) : null
   let o = 0
   for (const g of prepped) {
     if (!g.attributes.normal) g.computeVertexNormals()
     pos.set(g.attributes.position.array as Float32Array, o * 3)
     nor.set(g.attributes.normal.array as Float32Array, o * 3)
+    if (col) col.set(g.attributes.color.array as Float32Array, o * 3)
+    if (uv) uv.set(g.attributes.uv.array as Float32Array, o * 2)
     o += g.attributes.position.count
     g.dispose()
   }
@@ -187,8 +202,47 @@ export function mergeAll(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
   const out = new THREE.BufferGeometry()
   out.setAttribute('position', new THREE.BufferAttribute(pos, 3))
   out.setAttribute('normal', new THREE.BufferAttribute(nor, 3))
+  if (col) out.setAttribute('color', new THREE.BufferAttribute(col, 3))
+  if (uv) out.setAttribute('uv', new THREE.BufferAttribute(uv, 2))
   out.computeBoundingSphere()
   return out
+}
+
+/** Paint a whole geometry one colour (a `color` attribute, for vertexColors materials + mergeAll). */
+export function tint(g: THREE.BufferGeometry, color: THREE.ColorRepresentation): THREE.BufferGeometry {
+  const c = new THREE.Color(color)
+  const n = g.attributes.position.count
+  const a = new Float32Array(n * 3)
+  for (let i = 0; i < n; i++) {
+    a[i * 3] = c.r
+    a[i * 3 + 1] = c.g
+    a[i * 3 + 2] = c.b
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(a, 3))
+  return g
+}
+
+/**
+ * A construction worker, 1.8 m, standing on y = 0 facing +z: dark work
+ * trousers, hi-vis vest (orange or yellow), white hard hat. Vertex-coloured:
+ * use with a `vertexColors: true` material (e.g. MAT.person()), instance it
+ * for crews. Tiny at tower scale — they are the scale reference.
+ */
+export function personGeometry(o: { vest?: THREE.ColorRepresentation; hat?: THREE.ColorRepresentation } = {}): THREE.BufferGeometry {
+  const dark = '#23272d'
+  const vest = o.vest ?? T.safety
+  const skin = '#b98b6e'
+  return mergeAll([
+    tint(new THREE.BoxGeometry(0.15, 0.86, 0.2).translate(-0.1, 0.43, 0), dark),
+    tint(new THREE.BoxGeometry(0.15, 0.86, 0.2).translate(0.1, 0.43, 0), dark),
+    tint(new THREE.BoxGeometry(0.44, 0.62, 0.26).translate(0, 1.17, 0), vest),
+    tint(new THREE.BoxGeometry(0.1, 0.58, 0.12).translate(-0.28, 1.14, 0.02), dark),
+    tint(new THREE.BoxGeometry(0.1, 0.58, 0.12).translate(0.28, 1.14, 0.02), dark),
+    tint(new THREE.BoxGeometry(0.16, 0.12, 0.16).translate(0, 1.52, 0), skin),
+    tint(new THREE.SphereGeometry(0.11, 8, 6).translate(0, 1.63, 0), skin),
+    tint(new THREE.SphereGeometry(0.135, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2).translate(0, 1.67, 0), o.hat ?? '#f4f1ea'),
+    tint(new THREE.CylinderGeometry(0.17, 0.17, 0.02, 12).translate(0, 1.67, 0.02), o.hat ?? '#f4f1ea'),
+  ])
 }
 
 /**
@@ -236,7 +290,8 @@ export class Sparks {
   private vel: Float32Array
   private life: Float32Array
   private next = 0
-  constructor(private max = 400, size = 0.12) {
+  /** size = world size factor; minPx = smallest point in pixels (keeps far sparks visible) */
+  constructor(private max = 400, size = 0.12, minPx = 0) {
     this.pos = new Float32Array(max * 3)
     this.vel = new Float32Array(max * 3)
     this.life = new Float32Array(max)
@@ -248,13 +303,14 @@ export class Sparks {
       depthWrite: false,
       blending: THREE.AdditiveBlending,
       toneMapped: false,
-      uniforms: { uSize: { value: size * 300 } },
+      uniforms: { uSize: { value: size * 300 }, uMinPx: { value: minPx } },
       vertexShader: /* glsl */ `
-        attribute float life; uniform float uSize; varying float vLife;
+        attribute float life; uniform float uSize, uMinPx; varying float vLife;
         void main() {
           vLife = life;
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
-          gl_PointSize = uSize * clamp(life, 0.0, 1.0) / max(-mv.z, 0.5);
+          float lk = clamp(life, 0.0, 1.0);
+          gl_PointSize = max(uSize * lk / max(-mv.z, 0.5), uMinPx * step(0.001, life) * (0.5 + 0.5 * lk));
           gl_Position = projectionMatrix * mv;
         }
       `,

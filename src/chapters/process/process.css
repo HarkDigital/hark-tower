@@ -1,0 +1,417 @@
+/* ------------------------------------------------------------------
+   Process · Blueprint — the drawing set.
+   Headline top-left over a soft graphite scrim; the spec plate (title
+   block, 0N — Title, text, erection track) bottom-left; three elevation-
+   datum plates for the stats with leaders to their levels on the tower.
+   Portrait: headline on a plate at the top, spec plate and stats at the
+   bottom (stats merge into one plate). Everything scoped to .stage-process.
+   ------------------------------------------------------------------ */
+
+.stage-process .pr {
+  position: absolute;
+  inset: 0;
+}
+
+/* ---------------- headline ---------------- */
+.stage-process .pr-head {
+  position: absolute;
+  left: var(--gutter);
+  top: var(--safe-top);
+  max-width: min(640px, calc(100vw - 2 * var(--gutter)));
+  display: grid;
+  gap: 16px;
+  isolation: isolate;
+}
+/* a soft graphite shade from the top-left corner so the words read over the
+   bright golden haze (≥ 4.5:1 for the eyebrow, measured on the render) */
+.stage-process .pr-head::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  left: calc(-1 * var(--gutter));
+  top: calc(-1 * var(--safe-top));
+  right: -260px;
+  bottom: -120px;
+  background: linear-gradient(90deg, rgba(12, 15, 19, 0.74) 0%, rgba(12, 15, 19, 0.66) 70%, rgba(12, 15, 19, 0) 100%);
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 64%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 0%, #000 64%, transparent 100%);
+  pointer-events: none;
+}
+.stage-process .pr-title {
+  font-size: clamp(2.6rem, 5.6vw, 5.8rem);
+}
+
+/* ---------------- the spec plate ---------------- */
+.stage-process .pr-plate {
+  position: absolute;
+  left: var(--gutter);
+  bottom: var(--safe-bottom);
+  width: min(470px, calc(100vw - 2 * var(--gutter)));
+  padding: 16px 22px 18px;
+  display: grid;
+  gap: 16px;
+}
+.stage-process .pr-deck {
+  display: grid;
+}
+.stage-process .pr-card {
+  grid-area: 1 / 1;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.3s ease,
+    visibility 0s linear 0.3s;
+}
+.stage-process .pr-card.is-in {
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 0.4s ease 0.08s,
+    visibility 0s;
+}
+
+/* title block: a ruled strip like the corner of a drawing sheet */
+.stage-process .pr-tb {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid rgba(143, 214, 255, 0.42);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+.stage-process .pr-tb > span {
+  padding: 7px 10px 6px;
+}
+.stage-process .pr-tb-sheet {
+  color: #0d1a2b;
+  background: var(--drawline);
+  font-weight: 500;
+}
+.stage-process .pr-tb-of {
+  margin-left: auto;
+  color: var(--fg-muted);
+  border-left: 1px solid rgba(143, 214, 255, 0.42);
+}
+.stage-process .pr-name {
+  font-family: var(--font-display);
+  font-weight: 820;
+  text-transform: uppercase;
+  line-height: 0.92;
+  letter-spacing: 0.006em;
+  font-size: clamp(2.2rem, 3.6vw, 3.4rem);
+  margin: 0;
+  color: var(--fg);
+}
+.stage-process .pr-text {
+  max-width: 40ch;
+}
+
+/* the erection track: four bays, each fills with its step */
+.stage-process .pr-track {
+  list-style: none;
+  margin: 0;
+  padding: 12px 0 0;
+  border-top: 1px dashed var(--line-strong);
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.stage-process .pr-seg {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+.stage-process .pr-bar {
+  position: relative;
+  display: block;
+  height: 6px;
+  background: repeating-linear-gradient(135deg, rgba(244, 241, 234, 0.2) 0 3px, transparent 3px 6px);
+  overflow: hidden;
+}
+.stage-process .pr-bar i {
+  position: absolute;
+  inset: 0;
+  background: var(--yellow);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+}
+.stage-process .pr-seg.is-done .pr-bar i {
+  background: var(--signal);
+}
+.stage-process .pr-seg-t {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stage-process .pr-seg.is-active .pr-seg-t {
+  color: var(--fg);
+}
+
+/* ---------------- stats: elevation datums ---------------- */
+.stage-process .pr-stats {
+  position: absolute;
+  left: var(--gutter);
+  top: var(--safe-top);
+  bottom: var(--safe-bottom);
+  width: min(390px, calc(100vw - 2 * var(--gutter)));
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+}
+.stage-process .pr-stat {
+  padding: 13px 20px 15px;
+  display: grid;
+  gap: 6px;
+}
+.stage-process .pr-el {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--drawline);
+}
+.stage-process .pr-elmark {
+  flex: none;
+}
+.stage-process .pr-val {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 850;
+  text-transform: uppercase;
+  line-height: 0.9;
+  font-size: clamp(2.6rem, 4.2vw, 4rem);
+  color: var(--fg);
+}
+.stage-process .pr-lab {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--fg-muted);
+  max-width: 38ch;
+}
+
+.stage-process .pr-datums {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.stage-process .pr-datum {
+  fill: none;
+  stroke: var(--drawline);
+  stroke-width: 1.25;
+  stroke-dasharray: 2000;
+  opacity: 0;
+}
+.stage-process .pr-datum-node {
+  fill: rgba(13, 53, 102, 0.85);
+  stroke: var(--drawline);
+  stroke-width: 1.25;
+  opacity: 0;
+}
+
+/* ---------------- portrait ---------------- */
+.stage-process .is-portrait .pr-head {
+  right: var(--gutter);
+  max-width: none;
+  padding: 16px 18px 18px;
+  gap: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--yellow);
+  border-radius: 2px;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+.stage-process .is-portrait .pr-head::before {
+  display: none;
+}
+.stage-process .is-portrait .pr-title {
+  font-size: clamp(2.3rem, 9.4vw, 4.2rem);
+}
+.stage-process .is-portrait .pr-plate {
+  right: var(--gutter);
+  width: auto;
+  max-width: 560px;
+}
+.stage-process .is-portrait .pr-stats {
+  top: auto;
+  right: var(--gutter);
+  width: auto;
+  max-width: 560px;
+  gap: 0;
+  padding: 6px 18px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--yellow);
+  border-radius: 2px;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+}
+.stage-process .is-portrait .pr-stat {
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  column-gap: 12px;
+  row-gap: 4px;
+  padding: 11px 0 12px;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.stage-process .is-portrait .pr-stat + .pr-stat {
+  border-top: 1px dashed var(--line-strong);
+}
+.stage-process .is-portrait .pr-el {
+  grid-column: 2;
+  grid-row: 1;
+  font-size: 10px;
+}
+.stage-process .is-portrait .pr-val {
+  grid-column: 1;
+  grid-row: 1;
+  font-size: clamp(2rem, 8.4vw, 3rem);
+}
+.stage-process .is-portrait .pr-lab {
+  grid-column: 1 / -1;
+  font-size: 13.5px;
+  line-height: 1.4;
+  max-width: none;
+}
+
+@media (max-width: 420px) {
+  .stage-process .pr-plate {
+    padding: 14px 16px 16px;
+    gap: 12px;
+  }
+  .stage-process .pr-card {
+    gap: 9px;
+  }
+  .stage-process .pr-name {
+    font-size: 2rem;
+  }
+  .stage-process .pr-text {
+    font-size: 14.5px;
+    line-height: 1.5;
+  }
+  .stage-process .pr-seg-t {
+    font-size: 9.5px;
+    letter-spacing: 0.02em;
+  }
+  .stage-process .pr-tb {
+    font-size: 10px;
+  }
+  .stage-process .pr-tb > span {
+    padding: 6px 8px 5px;
+  }
+}
+
+@media (max-height: 700px) and (orientation: portrait) {
+  .stage-process .is-portrait .pr-head {
+    padding: 12px 14px 14px;
+    gap: 8px;
+  }
+  .stage-process .is-portrait .pr-title {
+    font-size: 2.1rem;
+  }
+  .stage-process .is-portrait .pr-stat {
+    padding: 8px 0 9px;
+  }
+  .stage-process .is-portrait .pr-val {
+    font-size: 1.8rem;
+  }
+  .stage-process .is-portrait .pr-lab {
+    font-size: 13px;
+    line-height: 1.35;
+  }
+}
+
+/* ---------------- short landscape phones: thin bands, compact plates ---------------- */
+@media (orientation: landscape) and (max-height: 500px) {
+  .stage-process .pr-head {
+    gap: 8px;
+  }
+  .stage-process .pr-title {
+    font-size: clamp(1.9rem, 6.2vh, 2.6rem);
+  }
+  .stage-process .pr-plate {
+    width: min(400px, 48vw);
+    padding: 10px 14px 12px;
+    gap: 8px;
+  }
+  .stage-process .pr-card {
+    gap: 6px;
+  }
+  .stage-process .pr-name {
+    font-size: 1.6rem;
+  }
+  .stage-process .pr-text {
+    font-size: 13px;
+    line-height: 1.42;
+  }
+  .stage-process .pr-tb {
+    font-size: 9.5px;
+  }
+  .stage-process .pr-tb > span {
+    padding: 5px 8px 4px;
+  }
+  .stage-process .pr-track {
+    padding-top: 8px;
+  }
+  .stage-process .pr-seg-t {
+    font-size: 9px;
+  }
+  .stage-process .pr-stats {
+    width: min(340px, 44vw);
+    gap: 6px;
+  }
+  .stage-process .pr-stat {
+    padding: 7px 12px 8px;
+    gap: 3px;
+  }
+  .stage-process .pr-el {
+    font-size: 9.5px;
+  }
+  .stage-process .pr-val {
+    font-size: 1.6rem;
+  }
+  .stage-process .pr-lab {
+    font-size: 11.5px;
+    line-height: 1.32;
+  }
+}
+
+/* short landscape: the three datum plates line up along the bottom */
+.stage-process .is-short .pr-stats {
+  top: auto;
+  right: var(--gutter);
+  width: auto;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 8px;
+}
+.stage-process .is-short .pr-stat {
+  flex: 1 1 0;
+  min-width: 0;
+}

@@ -1,0 +1,296 @@
+/* ------------------------------------------------------------------
+   FLOORS (services) — the hoist ride. Every selector is scoped to the
+   chapter's stage. Copy lives inside the safe area; the chrome owns the
+   bands above and below.
+   ------------------------------------------------------------------ */
+
+/* intro: the section headline, top-left, over a soft scrim (the morning sky is bright) */
+.stage-services .sv-intro {
+  position: absolute;
+  left: var(--gutter);
+  top: var(--safe-top);
+  max-width: min(640px, calc(100vw - 2 * var(--gutter)));
+  display: grid;
+  justify-items: start;
+  gap: 16px;
+  padding: 22px 26px 22px 0;
+  opacity: 0;
+  visibility: hidden;
+  transform: translate3d(0, -10px, 0);
+  transition:
+    opacity 0.45s ease,
+    transform 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 0.45s;
+}
+.stage-services .sv-intro::before {
+  content: '';
+  position: absolute;
+  inset: -40px -120px -40px calc(-1 * var(--gutter));
+  z-index: -1;
+  background: radial-gradient(ellipse at 30% 50%, rgba(10, 13, 17, 0.74), rgba(10, 13, 17, 0.56) 42%, rgba(10, 13, 17, 0) 74%);
+  pointer-events: none;
+}
+/* small caps over a bright sky: give them their own graphite chip (>= 4.5:1 whatever is behind) */
+.stage-services .sv-intro .hud-eyebrow {
+  padding: 5px 10px 5px 6px;
+  background: rgba(14, 17, 20, 0.82);
+}
+.stage-services .sv-intro.is-on {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition-delay: 0s;
+}
+.stage-services .sv-intro-title {
+  font-size: clamp(2.8rem, 6vw, 6rem);
+  /* the word masks would clip a soft shadow into boxes; the scrim does that job */
+  text-shadow: none;
+}
+.stage-services .sv-intro-sub {
+  margin: 0;
+  color: var(--fg);
+  padding: 5px 9px;
+  background: rgba(13, 53, 102, 0.82);
+  border: 1px solid rgba(143, 214, 255, 0.5);
+}
+
+/* the spec plate */
+.stage-services .sv-card {
+  position: absolute;
+  left: var(--gutter);
+  bottom: var(--safe-bottom);
+  width: min(468px, 38vw);
+  display: grid;
+  gap: 14px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translate3d(0, 14px, 0);
+  transition:
+    opacity 0.4s ease,
+    transform 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 0.4s;
+}
+.stage-services .sv-card.is-on {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition-delay: 0s;
+}
+.stage-services .sv-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin: 0;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--line-strong);
+  color: var(--fg);
+  white-space: nowrap;
+}
+.stage-services .sv-level {
+  color: var(--yellow);
+  font-weight: 500;
+}
+.stage-services .sv-dot {
+  color: var(--fg-faint);
+}
+.stage-services .sv-head-r {
+  display: inline-flex;
+  gap: 10px;
+  color: var(--fg-muted);
+}
+.stage-services .sv-status {
+  color: var(--fg-muted);
+}
+.stage-services .sv-status.is-moving {
+  color: var(--drawline);
+}
+
+.stage-services .sv-stack {
+  display: grid;
+}
+.stage-services .sv-item {
+  grid-area: 1 / 1;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.28s ease,
+    visibility 0s linear 0.28s;
+}
+.stage-services .sv-item.is-on {
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 0.4s ease 0.08s,
+    visibility 0s linear 0s;
+}
+.stage-services .sv-title {
+  font-size: clamp(2rem, 3vw, 3.1rem);
+  line-height: 0.92;
+  text-shadow: none;
+}
+.stage-services .sv-blurb {
+  max-width: none;
+}
+
+/* the landing index: 01–11 */
+.stage-services .sv-keys {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line-strong);
+}
+.stage-services .sv-key {
+  flex: 1 1 0;
+  min-width: 26px;
+  height: 30px;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+  background: rgba(244, 241, 234, 0.04);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease;
+}
+.stage-services .sv-key:hover {
+  color: var(--fg);
+  border-color: var(--yellow);
+}
+.stage-services .sv-key.is-on {
+  color: var(--ink);
+  background: var(--signal);
+  border-color: var(--signal);
+}
+
+/* mid-size landscape: a narrower plate */
+@media (max-width: 1100px) and (orientation: landscape) {
+  .stage-services .sv-card {
+    width: min(420px, 42vw);
+  }
+}
+
+/* portrait: the tower and the car above, the plate along the bottom */
+@media (orientation: portrait) {
+  .stage-services .sv-card {
+    right: var(--gutter);
+    width: auto;
+    max-width: 560px;
+    gap: 12px;
+  }
+  .stage-services .sv-intro {
+    right: var(--gutter);
+    padding: 18px 20px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--yellow);
+    border-radius: 2px;
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+  }
+  .stage-services .sv-intro::before {
+    display: none;
+  }
+  .stage-services .sv-intro-title {
+    font-size: clamp(2.4rem, 11vw, 4.6rem);
+  }
+}
+@media (orientation: portrait) and (max-width: 600px) {
+  .stage-services .sv-card {
+    padding: 16px 16px 14px;
+    gap: 10px;
+  }
+  .stage-services .sv-head {
+    padding-bottom: 9px;
+    font-size: 10px;
+  }
+  .stage-services .sv-status {
+    display: none;
+  }
+  .stage-services .sv-item {
+    gap: 9px;
+  }
+  .stage-services .sv-title {
+    font-size: clamp(1.7rem, 8vw, 2.2rem);
+  }
+  .stage-services .sv-blurb {
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .stage-services .sv-tags .hud-tag {
+    font-size: 9.5px;
+    padding: 3px 6px;
+  }
+  .stage-services .sv-keys {
+    gap: 3px;
+    padding-top: 10px;
+  }
+  .stage-services .sv-key {
+    min-width: 24px;
+    height: 28px;
+    font-size: 10px;
+  }
+}
+@media (orientation: portrait) and (max-width: 600px) and (max-height: 700px) {
+  .stage-services .sv-blurb {
+    font-size: 13.5px;
+    line-height: 1.45;
+  }
+  .stage-services .sv-title {
+    font-size: 1.6rem;
+  }
+}
+
+/* short landscape phones: thin bands, a compact plate */
+@media (orientation: landscape) and (max-height: 500px) {
+  .stage-services .sv-intro {
+    padding: 10px 16px 10px 0;
+    gap: 10px;
+  }
+  .stage-services .sv-intro-title {
+    font-size: clamp(1.9rem, 7vh, 2.6rem);
+  }
+  .stage-services .sv-intro-sub {
+    display: none;
+  }
+  .stage-services .sv-card {
+    width: min(460px, 56vw);
+    padding: 12px 14px 10px;
+    gap: 8px;
+  }
+  .stage-services .sv-head {
+    padding-bottom: 6px;
+    font-size: 10px;
+  }
+  .stage-services .sv-item {
+    gap: 6px;
+  }
+  .stage-services .sv-title {
+    font-size: 1.5rem;
+  }
+  .stage-services .sv-blurb {
+    font-size: 12.5px;
+    line-height: 1.42;
+  }
+  .stage-services .sv-tags .hud-tag {
+    font-size: 9px;
+    padding: 2px 5px;
+  }
+  .stage-services .sv-keys {
+    padding-top: 7px;
+  }
+  .stage-services .sv-key {
+    height: 24px;
+    min-width: 24px;
+    font-size: 10px;
+  }
+}

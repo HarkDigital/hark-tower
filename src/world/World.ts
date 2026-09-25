@@ -1,8 +1,10 @@
 import * as THREE from 'three'
 import type { Frame } from '../core/types'
-import { Tower } from './tower'
+import { Tower, CROWN_Y, CROWN_H } from './tower'
 import { Crane, MAST_H } from './crane'
 import { City } from './city'
+import { Frontier } from './frontier'
+import { Site } from './site'
 import { FLOORS, FLOOR_H } from '../kit/steel'
 
 /*
@@ -18,7 +20,19 @@ import { FLOORS, FLOOR_H } from '../kit/steel'
  *    world.tower.frontier = height of the erected steel in metres.
  *  - THE CRANE (src/world/crane.ts): rides on the core above the frontier;
  *    params.crane {yaw, reach 0..1, drop metres}; world.crane.hookWorld.
+ *  - THE FRONTIER (src/world/frontier.ts): the working top of the steel —
+ *    plank decking, edge protection, the raising gang, beam bundles, the
+ *    jump-form rig, the construction hoist, sodium work lights (on at dawn and
+ *    from golden hour), sparks at the bolt-up points (params.activity).
+ *  - THE SITE (src/world/site.ts): hoarding with the Hark graphic, site
+ *    office, laydown yard, trucks, crew; street trees, cars, street lights.
+ *    A chapter that stages its own ground site sets params.site = 0 every
+ *    frame (hides everything inside the hoarding, and the hoarding).
  *  - SHADOWS: one sun shadow map (desktop) centred on params.focus.
+ *  - THE SUN walks round the tower through the day (per-keyframe azimuth):
+ *    dawn behind it, morning front-left (main face lit), golden hour
+ *    front-right (both visible faces warm), sunset behind-right; blue hour
+ *    and night after. Reflections include a far skyline ring.
  *
  * Chapters set world.params every frame they care; the engine resets them to
  * defaults first; values are damped (so cuts never pop and the tower builds
@@ -38,8 +52,13 @@ export interface WorldParams {
   ghost: number
   /** 0..1 the Hark crown sign (only once all floors are built) */
   crown: number
-  /** crane: jib yaw (radians, 0 = +x), trolley reach 0..1, cable drop (m) */
-  crane: { yaw: number; reach: number; drop: number }
+  /**
+   * crane: jib yaw (radians, 0 = +x), trolley reach 0..1, cable drop (m);
+   * away 0..1 lowers the crane down into the core (dismantling it on camera
+   * after topping out); snap = true skips the pose smoothing this frame
+   * (for chapters that carry a load and need the hook exactly where asked)
+   */
+  crane: { yaw: number; reach: number; drop: number; away: number; snap: boolean }
   /** world point the sun's shadow frustum centres on (usually the frontier) */
   focus: THREE.Vector3
   /** fog density multiplier (1 = the time of day's own) */
@@ -48,29 +67,64 @@ export interface WorldParams {
   env: number
   /** wind sway at the tower top (m); the phase runs on its own clock (reduced motion: keep 0) */
   sway: number
+  /** 0..1 how busy the frontier is (spark bursts); 1 default, 0 = quiet */
+  activity: number
+  /**
+   * 1 = show the world's ground site inside the hoarding (hoarding, apron,
+   * set-out, cabins, laydown, trucks, ground crew); 0 = hide it because the
+   * chapter stages its own (streets, trees and cars outside always show)
+   */
+  site: number
+  /** 0..1 the world's construction hoist on the +x face (0 = hidden, for chapters that ride their own) */
+  hoist: number
+  /** multiplier on the frontier's sodium work lights (e.g. dim them at dawn close-ups) */
+  worklights: number
 }
 
 type Key = {
   t: number
   zenith: string
   horizon: string
+  /** sun elevation (deg) */
   sunEl: number
+  /** sun azimuth (rad): sun direction = (sin az, ·, -cos az); 0 = behind the tower from +z */
+  az: number
   sun: string
+  /** the sky's glow round the sun (defaults to the sun colour; the afterglow after sunset) */
+  glow?: string
   sunI: number
   sky: string
   ground: string
   hemiI: number
   fog: string
   fogD: number
+  /** city window + street lights 0..1 */
   lights: number
+  /** cloud cover 0..1 */
+  cloud: number
+  /** how fast the horizon colour gives way to the zenith (elevation, 0..1; small = a thin horizon band) */
+  band: number
 }
 
 const KEYS: Key[] = [
-  { t: 0, zenith: '#34466a', horizon: '#f0b98f', sunEl: 2, sun: '#ffb67a', sunI: 2.4, sky: '#8fa3c7', ground: '#5a4a3c', hemiI: 0.75, fog: '#d9c1aa', fogD: 0.0019, lights: 0.05 },
-  { t: 0.25, zenith: '#2f64b0', horizon: '#bcd6ec', sunEl: 28, sun: '#fff4e2', sunI: 3.4, sky: '#a9c8ef', ground: '#6b6258', hemiI: 0.95, fog: '#bfd3e6', fogD: 0.0008, lights: 0 },
-  { t: 0.5, zenith: '#355f9b', horizon: '#ffd09a', sunEl: 9, sun: '#ffbf6e', sunI: 3.1, sky: '#9fb6d6', ground: '#6e5a48', hemiI: 0.8, fog: '#efcfab', fogD: 0.0013, lights: 0.02 },
-  { t: 0.75, zenith: '#1b2748', horizon: '#ff8c5f', sunEl: 0.5, sun: '#ff7c4a', sunI: 1.5, sky: '#5a6b93', ground: '#3b3140', hemiI: 0.55, fog: '#b98a7e', fogD: 0.0016, lights: 0.6 },
-  { t: 1, zenith: '#060a17', horizon: '#1b2442', sunEl: -12, sun: '#8ea4e0', sunI: 0.45, sky: '#2c3a63', ground: '#161820', hemiI: 0.4, fog: '#141a2b', fogD: 0.0015, lights: 1 },
+  // dawn: low sun just behind the tower, peach haze, cool zenith, a few lights still on
+  { t: 0, zenith: '#2b3d66', horizon: '#f4b183', sunEl: 1.5, az: -0.75, sun: '#ffb070', sunI: 2.2, sky: '#8e98b8', ground: '#5a4a3e', hemiI: 0.7, fog: '#d3b39c', fogD: 0.0014, lights: 0.3, cloud: 0.75, band: 0.24 },
+  // early morning: sun climbing on the left, the haze burning off
+  { t: 0.12, zenith: '#2f5c9e', horizon: '#dcd3c6', sunEl: 13, az: -1.7, sun: '#ffe2bd', sunI: 3.0, sky: '#9db6dc', ground: '#5d554c', hemiI: 0.85, fog: '#cdd2d4', fogD: 0.00085, lights: 0.04, cloud: 0.7, band: 0.3 },
+  // morning: clean blue, main face lit from the front-left
+  { t: 0.25, zenith: '#2a5eab', horizon: '#c3d9ec', sunEl: 30, az: -2.5, sun: '#fff3e0', sunI: 3.5, sky: '#a8c6ec', ground: '#6b6258', hemiI: 0.95, fog: '#c2d4e4', fogD: 0.0006, lights: 0, cloud: 0.6, band: 0.36 },
+  // midday / afternoon: high sun swinging round the front
+  { t: 0.38, zenith: '#2659a6', horizon: '#cfdfec', sunEl: 40, az: -3.25, sun: '#fff7ea', sunI: 3.6, sky: '#adc8ea', ground: '#6e655a', hemiI: 0.95, fog: '#c8d6e2', fogD: 0.00058, lights: 0, cloud: 0.55, band: 0.38 },
+  // golden hour: low warm sun front-right, both visible faces glowing
+  { t: 0.52, zenith: '#34598f', horizon: '#ffc98c', sunEl: 12, az: -4.0, sun: '#ffbd6a', sunI: 3.3, sky: '#9fb2d0', ground: '#6e5a48', hemiI: 0.62, fog: '#dcc2a4', fogD: 0.00062, lights: 0.02, cloud: 0.65, band: 0.2 },
+  // late golden: long shadows, amber
+  { t: 0.64, zenith: '#2e4a7d', horizon: '#ffb070', sunEl: 5, az: -4.9, sun: '#ffa257', sunI: 2.8, sky: '#8a98bb', ground: '#5e4a3e', hemiI: 0.58, fog: '#d5a887', fogD: 0.00075, lights: 0.12, cloud: 0.7, band: 0.2 },
+  // sunset: the sun sets behind-right, orange sky, the city switching on
+  { t: 0.74, zenith: '#26335e', horizon: '#ff8752', sunEl: 0.2, az: -5.7, sun: '#ff7a45', sunI: 1.7, sky: '#5d6a96', ground: '#3b3140', hemiI: 0.55, fog: '#be8676', fogD: 0.001, lights: 0.55, cloud: 0.8, band: 0.15, glow: '#ff7a45' },
+  // blue hour: deep blue sky, a last ember band on the horizon, city lit
+  { t: 0.86, zenith: '#0c1838', horizon: '#d9735a', sunEl: -5, az: -6.0, sun: '#6f7fb8', sunI: 0.7, sky: '#34457a', ground: '#1f2130', hemiI: 0.5, fog: '#6a5266', fogD: 0.0009, lights: 0.92, cloud: 0.55, band: 0.075, glow: '#ff6440' },
+  // night
+  { t: 1, zenith: '#040815', horizon: '#15203f', sunEl: -14, az: -6.3, sun: '#8ea4e0', sunI: 0.42, sky: '#27365f', ground: '#15171f', hemiI: 0.42, fog: '#352f45', fogD: 0.0009, lights: 1, cloud: 0.4, band: 0.1, glow: '#1b2442' },
 ]
 
 export const WORLD_DEFAULTS = {
@@ -83,6 +137,10 @@ export const WORLD_DEFAULTS = {
   fog: 1,
   env: 1,
   sway: 0,
+  activity: 1,
+  site: 1,
+  hoist: 1,
+  worklights: 1,
 }
 
 const SKY_VERT = /* glsl */ `
@@ -93,8 +151,8 @@ const SKY_VERT = /* glsl */ `
   }
 `
 const SKY_FRAG = /* glsl */ `
-  uniform vec3 uZenith, uHorizon, uSunColor, uFogColor, uSunDir;
-  uniform float uTime, uNight, uCloud;
+  uniform vec3 uZenith, uHorizon, uSunColor, uGlowColor, uFogColor, uSunDir;
+  uniform float uTime, uNight, uCloud, uBand;
   varying vec3 vDir;
   float hash(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
   float noise(vec2 p) {
@@ -108,18 +166,21 @@ const SKY_FRAG = /* glsl */ `
     float el = d.y;
     // gradient: horizon glow → zenith, with a denser haze band at the horizon
     float up = clamp(el, 0.0, 1.0);
-    vec3 col = mix(uHorizon, uZenith, 1.0 - (1.0 - up) * (1.0 - up) * (1.0 - up));
-    col = mix(col, uFogColor, (1.0 - smoothstep(0.0, 0.12, el)) * 0.6);
+    vec3 col = mix(uHorizon, uZenith, 1.0 - exp(-up / max(uBand, 0.02)));
+    col = mix(col, uFogColor, (1.0 - smoothstep(0.0, 0.12 - 0.07 * uNight, el)) * mix(0.6, 0.75, uNight));
     // sun disc + glow
     float sd = max(dot(d, normalize(uSunDir)), 0.0);
     float glow = sd * sd * sd * sd;
-    col += uSunColor * (glow * glow * 0.9 + glow * 0.35) * (1.0 - uNight * 0.85);
+    // the glow hugs the horizon once the sun is down (afterglow)
+    float low = mix(1.0, 1.0 - smoothstep(0.0, 0.22, el), uNight);
+    col += uGlowColor * (glow * glow * 0.9 + glow * 0.35) * (1.0 - uNight * 0.55) * low;
     col += uSunColor * smoothstep(0.9993, 0.9998, sd) * 6.0 * step(0.0, uSunDir.y + 0.02) * (1.0 - uNight);
     // clouds: a high, thin deck lit from the sun side
     if (el > 0.02) {
       vec2 cp = d.xz / (el + 0.08) * 1.4 + vec2(uTime * 0.004, 0.0);
       float c = smoothstep(0.52, 0.85, fbm(cp)) * uCloud * smoothstep(0.02, 0.2, el);
-      vec3 cc = mix(uHorizon * 1.05, vec3(1.0), 0.35) * (1.0 - uNight * 0.8) + uSunColor * glow * 0.6;
+      // clouds: lit by the horizon by day, afterglow-edged and zenith-dark at night
+      vec3 cc = mix(mix(uHorizon * 1.05, vec3(1.0), 0.35), uZenith * 1.7 + uHorizon * 0.12 * (1.0 - smoothstep(0.1, 0.35, el)), uNight) + uGlowColor * glow * 0.6;
       col = mix(col, cc, c * 0.8);
     }
     // stars at night
@@ -129,13 +190,44 @@ const SKY_FRAG = /* glsl */ `
       col += vec3(s);
     }
     // below the horizon: the far city haze
-    col = mix(col, uFogColor * 0.85, 1.0 - smoothstep(-0.02, 0.0, el));
+    col = mix(col, uFogColor, 1.0 - smoothstep(-0.02, 0.0, el));
     col += (hash(gl_FragCoord.xy) - 0.5) / 255.0;
     gl_FragColor = vec4(col, 1.0);
   }
 `
 
-const ENV_STEPS = 8
+/*
+ * A far skyline ring for the reflection captures only: the curtain wall and
+ * the city glass reflect building silhouettes (hazed by the fog colour, lit
+ * windows at night) below the horizon instead of a flat fog colour.
+ */
+const SKYLINE_FRAG = /* glsl */ `
+  uniform vec3 uFogColor, uHorizon;
+  uniform float uNight, uLights;
+  varying vec3 vDir;
+  float hash(float n) { return fract(sin(n) * 43758.5453); }
+  void main() {
+    vec3 d = normalize(vDir);
+    float a = atan(d.z, d.x);
+    float el = asin(clamp(d.y, -1.0, 1.0));
+    // two layers of buildings: near (wide, taller) and far (narrow, lower)
+    float c1 = floor(a * 22.0);
+    float c2 = floor(a * 61.0);
+    float h1 = 0.012 + 0.07 * pow(hash(c1 * 1.7), 2.5);
+    float h2 = 0.005 + 0.03 * hash(c2 * 3.1);
+    float top = max(h1, h2);
+    if (el > top) discard;
+    float near = step(h2, h1);
+    vec3 base = mix(uFogColor * 0.62, uFogColor * 0.4 + uHorizon * 0.06, near);
+    // windows at night
+    vec2 w = vec2(a * 900.0, el * 900.0);
+    float win = step(0.62, hash(floor(w.x) * 7.1 + floor(w.y) * 13.7)) * step(0.3, fract(w.x)) * step(0.4, fract(w.y));
+    vec3 col = base + vec3(1.0, 0.78, 0.5) * win * uLights * 0.9;
+    gl_FragColor = vec4(col, 1.0);
+  }
+`
+
+const ENV_STEPS = 12
 
 export class World {
   object = new THREE.Group()
@@ -144,11 +236,15 @@ export class World {
   tower: Tower
   crane: Crane
   city: City
+  frontier: Frontier
+  site: Site
   params: WorldParams = {
     ...WORLD_DEFAULTS,
-    crane: { yaw: 0.6, reach: 0.55, drop: 18 },
+    crane: { yaw: 0.6, reach: 0.55, drop: 18, away: 0, snap: false },
     focus: new THREE.Vector3(0, 0, 0),
   }
+  /** the crane's smoothed pose this frame (what's drawn) */
+  cranePose = { yaw: 0.6, reach: 0.55, drop: 18 }
   private cur = {
     time: WORLD_DEFAULTS.time,
     built: 0,
@@ -160,6 +256,9 @@ export class World {
     env: 1,
     sway: 0,
     swayPhase: 0,
+    activity: 1,
+    away: 0,
+    worklights: 1,
     yaw: 0.6,
     reach: 0.55,
     drop: 18,
@@ -169,11 +268,14 @@ export class World {
     uZenith: { value: new THREE.Color() },
     uHorizon: { value: new THREE.Color() },
     uSunColor: { value: new THREE.Color() },
+    uGlowColor: { value: new THREE.Color() },
     uFogColor: { value: new THREE.Color() },
     uSunDir: { value: new THREE.Vector3(0, 0.2, -1) },
     uTime: { value: 0 },
     uNight: { value: 0 },
     uCloud: { value: 0.8 },
+    uLights: { value: 0 },
+    uBand: { value: 0.3 },
   }
   private dome: THREE.Mesh
   private envScene = new THREE.Scene()
@@ -181,6 +283,7 @@ export class World {
   private envIndex = -1
   private pmrem: THREE.PMREMGenerator | null = null
   private fog: THREE.FogExp2
+  private tmpV = new THREE.Vector3()
   private tmpA = new THREE.Color()
   private tmpB = new THREE.Color()
 
@@ -205,6 +308,11 @@ export class World {
     // the env-capture scene uses the same sky material (clouds and all)
     const envDome = new THREE.Mesh(new THREE.SphereGeometry(50, 32, 16), skyMat)
     this.envScene.add(envDome)
+    const skyline = new THREE.Mesh(
+      new THREE.CylinderGeometry(40, 40, 60, 64, 1, true).translate(0, -26, 0),
+      new THREE.ShaderMaterial({ side: THREE.BackSide, uniforms: this.skyU, vertexShader: SKY_VERT, fragmentShader: SKYLINE_FRAG }),
+    )
+    this.envScene.add(skyline)
 
     this.sun = new THREE.DirectionalLight(0xffffff, 3)
     if (!mobile) {
@@ -234,6 +342,10 @@ export class World {
     scene.add(this.tower.root)
     this.crane = new Crane(mobile)
     scene.add(this.crane.root)
+    this.frontier = new Frontier(mobile)
+    scene.add(this.frontier.root)
+    this.site = new Site(mobile)
+    scene.add(this.site.root)
 
     if (renderer) this.pmrem = new THREE.PMREMGenerator(renderer)
   }
@@ -249,9 +361,15 @@ export class World {
     p.fog = WORLD_DEFAULTS.fog
     p.env = WORLD_DEFAULTS.env
     p.sway = WORLD_DEFAULTS.sway
+    p.activity = WORLD_DEFAULTS.activity
+    p.site = WORLD_DEFAULTS.site
+    p.hoist = WORLD_DEFAULTS.hoist
+    p.worklights = WORLD_DEFAULTS.worklights
     p.crane.yaw = 0.6
     p.crane.reach = 0.55
     p.crane.drop = 18
+    p.crane.away = 0
+    p.crane.snap = false
     p.focus.set(0, this.tower.frontier, 0)
   }
 
@@ -270,19 +388,30 @@ export class World {
     return out.copy(this.tmpA.set(a)).lerp(this.tmpB.set(b), k)
   }
 
-  /** Sky reflections for time `t` (PMREM keyframes, built lazily and cached). */
-  private envFor(t: number) {
+  /** Capture the sky (+ skyline ring) at keyframe `idx` into a PMREM. */
+  private buildEnv(idx: number) {
+    if (!this.pmrem || this.envMaps[idx]) return
+    const saved = this.skyState(idx / ENV_STEPS)
+    this.envMaps[idx] = this.pmrem.fromScene(this.envScene, 0, 0.1, 100, { size: this.mobile ? 64 : 128 }).texture
+    this.skyState(saved)
+  }
+
+  /**
+   * Sky reflections for time `t` (PMREM keyframes, cached). The current one is
+   * built on demand; the rest are warmed one per frame after the first second
+   * so scrolling into a new time of day never stalls on a capture.
+   */
+  private envFor(t: number, time: number) {
     if (!this.pmrem) return
     const idx = Math.round(THREE.MathUtils.clamp(t, 0, 1) * ENV_STEPS)
-    if (idx === this.envIndex) return
-    if (!this.envMaps[idx]) {
-      // capture the sky at exactly this keyframe's time
-      const saved = this.skyState(idx / ENV_STEPS)
-      this.envMaps[idx] = this.pmrem.fromScene(this.envScene, 0, 0.1, 100, { size: this.mobile ? 64 : 128 }).texture
-      this.skyState(saved)
+    if (idx !== this.envIndex) {
+      this.buildEnv(idx)
+      this.envIndex = idx
+      this.scene.environment = this.envMaps[idx]
+    } else if (time > 1.2) {
+      const next = this.envMaps.findIndex(m => !m)
+      if (next >= 0) this.buildEnv(next)
     }
-    this.envIndex = idx
-    this.scene.environment = this.envMaps[idx]
   }
 
   /** Apply the sky uniforms for time t; returns the previous time for restoring. */
@@ -295,12 +424,17 @@ export class World {
     this.mixColor(u.uZenith.value, a.zenith, b.zenith, k)
     this.mixColor(u.uHorizon.value, a.horizon, b.horizon, k)
     this.mixColor(u.uSunColor.value, a.sun, b.sun, k)
+    this.mixColor(u.uGlowColor.value, a.glow ?? a.sun, b.glow ?? b.sun, k)
     this.mixColor(u.uFogColor.value, a.fog, b.fog, k)
     const el = THREE.MathUtils.degToRad(THREE.MathUtils.lerp(a.sunEl, b.sunEl, k))
-    // the sun travels from behind-left (dawn) to behind-right (dusk)
-    const az = THREE.MathUtils.lerp(-0.95, 0.95, t)
+    // the sun walks round the tower (see the keys): behind at dawn, front-left
+    // in the morning, front-right at golden hour, sets behind-right
+    const az = THREE.MathUtils.lerp(a.az, b.az, k)
     u.uSunDir.value.set(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el))
     u.uNight.value = THREE.MathUtils.smoothstep(t, 0.72, 0.97)
+    u.uCloud.value = THREE.MathUtils.lerp(a.cloud, b.cloud, k)
+    u.uLights.value = THREE.MathUtils.lerp(a.lights, b.lights, k)
+    u.uBand.value = THREE.MathUtils.lerp(a.band, b.band, k)
     return prev
   }
 
@@ -312,19 +446,34 @@ export class World {
     this.first = false
     c.time += (p.time - c.time) * k
     c.built += (p.built - c.built) * kb
+    // exponential damping never quite arrives: snap the last centimetres so
+    // 'topped out' (built = 60) really happens
+    if (Math.abs(p.built - c.built) < 0.02) c.built = p.built
     c.glazed += (p.glazed - c.glazed) * kb
     c.fitted += (p.fitted - c.fitted) * kb
     c.ghost += (p.ghost - c.ghost) * k
     c.crown += (p.crown - c.crown) * k
     c.fog += (p.fog - c.fog) * k
     c.env += (p.env - c.env) * k
-    c.sway += (p.sway - c.sway) * (this.first ? 1 : 1 - Math.exp(-1.6 * frame.dt))
+    // reduced motion: the tower never sways, whatever a chapter asks for
+    c.sway += ((frame.reducedMotion ? 0 : p.sway) - c.sway) * (1 - Math.exp(-1.6 * frame.dt))
     c.swayPhase += frame.dt * 2.1
+    c.activity += (p.activity - c.activity) * k
     let dy = p.crane.yaw - c.yaw
     dy = Math.atan2(Math.sin(dy), Math.cos(dy))
     c.yaw += dy * k
     c.reach += (p.crane.reach - c.reach) * k
     c.drop += (p.crane.drop - c.drop) * k
+    if (p.crane.snap) {
+      c.yaw = p.crane.yaw
+      c.reach = p.crane.reach
+      c.drop = p.crane.drop
+    }
+    c.away += (p.crane.away - c.away) * kb
+    c.worklights += (p.worklights - c.worklights) * k
+    this.cranePose.yaw = c.yaw
+    this.cranePose.reach = c.reach
+    this.cranePose.drop = c.drop
 
     // sky + lights for the time of day
     this.skyState(c.time)
@@ -339,20 +488,46 @@ export class World {
     this.fog.color.copy(u.uFogColor.value)
     this.fog.density = THREE.MathUtils.lerp(a.fogD, b.fogD, kk) * c.fog
     this.renderer?.setClearColor(u.uFogColor.value)
-    this.city.update(THREE.MathUtils.lerp(a.lights, b.lights, kk))
+    const lights = u.uLights.value
+    this.city.update(lights)
+    this.site.update(lights)
+    this.site.onSite.visible = p.site > 0.5
     this.scene.environmentIntensity = c.env * (1 - u.uNight.value * 0.55)
-    this.envFor(c.time)
+    this.envFor(c.time, frame.time)
 
     // the tower
     const night = u.uNight.value
-    this.tower.update({ sway: c.sway, swayPhase: c.swayPhase, built: c.built, glazed: c.glazed, fitted: c.fitted, ghost: c.ghost, crown: c.crown, night }, frame.time)
+    // (reduced motion: the blueprint's scan line holds still)
+    const camToCrown = camera.position.distanceTo(this.tmpV.set(0, CROWN_Y + CROWN_H / 2, 0))
+    this.tower.update({ sway: c.sway, swayPhase: c.swayPhase, built: c.built, glazed: c.glazed, fitted: c.fitted, ghost: c.ghost, crown: c.crown, night, camToCrown }, frame.reducedMotion ? 4 : frame.time)
 
-    // the crane rides the core, two floors above the steel (hidden once topped out)
+    // the crane rides the core, two floors above the steel (hidden once the crown lights)
     const coreTop = Math.min(FLOORS, c.built + 2) * FLOOR_H
-    this.crane.root.position.set(this.tower.swayAt(coreTop), coreTop, 0)
-    this.crane.root.visible = c.crown < 0.98
+    // 'away' lowers the crane down through the core; without it the old rule
+    // still applies (it goes when the crown reaches full brightness)
+    const sink = c.away * (MAST_H + 16)
+    this.crane.root.position.set(this.tower.swayAt(coreTop), coreTop - sink, 0)
+    this.crane.root.visible = c.away < 0.99 && !(c.crown >= 0.98 && c.away < 0.01)
     this.crane.set(c.yaw, c.reach, c.drop)
-    this.crane.update()
+    this.crane.update(frame.dt, frame.time, night, frame.reducedMotion)
+
+    // the working frontier: work lights at dawn and from golden hour on
+    const t = c.time
+    const work = Math.max(1 - THREE.MathUtils.smoothstep(t, 0.04, 0.13), THREE.MathUtils.smoothstep(t, 0.6, 0.73))
+    this.frontier.update(
+      {
+        built: c.built,
+        coreTop,
+        lights: work * c.worklights,
+        hoist: p.hoist > 0.5,
+        activity: c.activity,
+        calm: frame.reducedMotion,
+        time: frame.time,
+        dt: frame.dt,
+        swayAt: y => this.tower.swayAt(y),
+      },
+      this.renderer?.domElement.height ?? frame.height,
+    )
 
     // sun + shadow frustum centred on the focus point
     const sd = u.uSunDir.value
@@ -361,6 +536,5 @@ export class World {
     this.sun.target.updateMatrixWorld()
 
     this.object.position.copy(camera.position)
-    void MAST_H
   }
 }

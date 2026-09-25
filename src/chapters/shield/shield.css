@@ -1,0 +1,281 @@
+/* Wind Load — "Hacked? Breathe." Every selector scoped under .stage-shield. */
+
+/* a soft graphite falloff behind the copy column (the squall sky is bright at the horizon) */
+.stage-shield .sh-scrim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(10, 12, 15, 0.55) 0%, rgba(10, 12, 15, 0.34) 30%, rgba(10, 12, 15, 0) 56%);
+}
+
+/* measures the safe area (chrome bands) for the callouts; never visible */
+.stage-shield .sh-probe {
+  position: absolute;
+  top: var(--safe-top);
+  bottom: var(--safe-bottom);
+  left: 0;
+  width: 0;
+  visibility: hidden !important;
+  pointer-events: none;
+}
+
+/* ---------- A: eyebrow, headline, body plate ---------- */
+
+.stage-shield .sh-a {
+  position: absolute;
+  left: var(--gutter);
+  top: var(--safe-top);
+  width: min(640px, 46vw);
+  display: grid;
+  justify-items: start;
+  gap: clamp(14px, 2.2vh, 22px);
+}
+.stage-shield .sh-eyebrow {
+  padding: 7px 11px 7px 9px;
+  background: rgba(16, 19, 23, 0.84);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  line-height: 1.35;
+}
+.stage-shield .sh-title {
+  font-size: clamp(3.2rem, 8.4vw, 8.8rem);
+  /* a tight shadow: a wide blur would be clipped into boxes by the hoisted-word masks */
+  text-shadow: 0 1px 2px rgba(8, 10, 14, 0.4);
+}
+.stage-shield .sh-plate {
+  max-width: min(470px, 38vw);
+  padding: 18px 22px 17px;
+}
+.stage-shield .sh-plate .hud-body {
+  max-width: 43ch;
+}
+
+/* ---------- B: the monitoring plate (24/7, label, CTA) ---------- */
+
+.stage-shield .sh-b {
+  position: absolute;
+  left: var(--gutter);
+  top: var(--safe-top);
+  width: min(460px, 38vw);
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  padding: 18px 24px 22px;
+}
+.stage-shield .sh-b-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.stage-shield .sh-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg);
+}
+.stage-shield .sh-live::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--signal);
+  box-shadow: 0 0 10px rgba(0, 255, 133, 0.7);
+}
+.stage-shield .sh-stat {
+  font-size: clamp(4.2rem, 8vw, 8.2rem);
+  line-height: 0.84;
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+  text-shadow: none;
+}
+.stage-shield .sh-rule {
+  width: 100%;
+  margin: 2px 0;
+}
+.stage-shield .sh-stat-label {
+  max-width: 36ch;
+}
+.stage-shield .sh-cta {
+  margin-top: 6px;
+}
+
+/* ---------- drawing annotations pinned to the tower ---------- */
+
+.stage-shield .sh-co .callout-label {
+  display: grid;
+  gap: 2px;
+  padding: 5px 9px 6px;
+  line-height: 1.35;
+}
+.stage-shield .sh-co-k {
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+.stage-shield .sh-co-v {
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: rgba(244, 241, 234, 0.9);
+}
+.stage-shield .sh-co-v b {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+/* the warning: a safety-orange plate with a hazard chip */
+.stage-shield .sh-co--warn .callout-label {
+  background: #ff6a1a;
+  border-color: rgba(14, 17, 20, 0.55);
+  color: #0e1114;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.3);
+}
+.stage-shield .sh-co--warn .sh-co-k {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.stage-shield .sh-co--warn .sh-co-k::before {
+  content: '';
+  width: 18px;
+  height: 7px;
+  background: repeating-linear-gradient(135deg, #0e1114 0 4px, #ff6a1a 4px 8px);
+  box-shadow: 0 0 0 1px #0e1114;
+}
+.stage-shield .sh-co--warn .sh-co-v,
+.stage-shield .sh-co--warn .sh-co-v b {
+  color: #0e1114;
+}
+.stage-shield .sh-co--warn .callout-svg path {
+  stroke: #ff6a1a;
+  stroke-opacity: 1;
+  stroke-width: 1.5;
+}
+.stage-shield .sh-co--warn .callout-dot {
+  border-color: #ff6a1a;
+}
+
+/* monitoring: a signal-green status light */
+.stage-shield .sh-co--ok .sh-co-k {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.stage-shield .sh-co--ok .sh-co-k::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--signal);
+  box-shadow: 0 0 8px rgba(0, 255, 133, 0.8);
+}
+.stage-shield .sh-co--ok .callout-svg path {
+  stroke: var(--signal);
+}
+.stage-shield .sh-co--ok .callout-dot {
+  border-color: var(--signal);
+}
+
+/* ---------- portrait: the scene up top, the copy below ---------- */
+
+@media (orientation: portrait) {
+  .stage-shield .sh-scrim {
+    background: linear-gradient(0deg, rgba(10, 12, 15, 0.6) 0%, rgba(10, 12, 15, 0.36) 34%, rgba(10, 12, 15, 0) 60%);
+  }
+  .stage-shield .sh-a,
+  .stage-shield .sh-b {
+    top: auto;
+    bottom: var(--safe-bottom);
+    left: var(--gutter);
+    right: var(--gutter);
+    width: auto;
+    max-width: 620px;
+  }
+  .stage-shield .sh-a {
+    gap: 12px;
+  }
+  .stage-shield .sh-title {
+    font-size: clamp(2.9rem, 12.4vw, 5.6rem);
+  }
+  .stage-shield .sh-plate {
+    max-width: none;
+    width: 100%;
+    padding: 15px 17px 14px;
+  }
+  .stage-shield .sh-plate .hud-body {
+    max-width: none;
+  }
+  .stage-shield .sh-b {
+    padding: 15px 18px 18px;
+    gap: 10px;
+  }
+  .stage-shield .sh-stat {
+    font-size: clamp(3.6rem, 17vw, 6.4rem);
+  }
+  .stage-shield .sh-stat-label {
+    max-width: none;
+  }
+}
+
+/* small phones: tighter still */
+@media (orientation: portrait) and (max-height: 700px) {
+  .stage-shield .sh-title {
+    font-size: clamp(2.5rem, 11vw, 4rem);
+  }
+  .stage-shield .sh-eyebrow {
+    font-size: 10.5px;
+    padding: 5px 9px 5px 7px;
+  }
+  .stage-shield .sh-plate .hud-body,
+  .stage-shield .sh-stat-label {
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .stage-shield .sh-stat {
+    font-size: clamp(3rem, 14vw, 4.4rem);
+  }
+  .stage-shield .sh-b-head {
+    padding-bottom: 7px;
+  }
+}
+
+/* short landscape phones: thin chrome bands, compact plates */
+@media (orientation: landscape) and (max-height: 500px) {
+  .stage-shield .sh-a {
+    gap: 8px;
+    width: min(520px, 50vw);
+  }
+  .stage-shield .sh-eyebrow {
+    font-size: 10px;
+    padding: 4px 8px 4px 6px;
+  }
+  .stage-shield .sh-title {
+    font-size: clamp(2rem, 6.6vw, 3.4rem);
+  }
+  .stage-shield .sh-plate {
+    max-width: min(420px, 48vw);
+    padding: 10px 14px 10px;
+  }
+  .stage-shield .sh-plate .hud-body,
+  .stage-shield .sh-stat-label {
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  .stage-shield .sh-b {
+    width: min(400px, 46vw);
+    padding: 10px 14px 12px;
+    gap: 6px;
+  }
+  .stage-shield .sh-b-head {
+    padding-bottom: 5px;
+  }
+  .stage-shield .sh-stat {
+    font-size: clamp(2.4rem, 7vw, 3.6rem);
+  }
+  .stage-shield .sh-cta {
+    margin-top: 2px;
+    padding: 9px 14px;
+  }
+}

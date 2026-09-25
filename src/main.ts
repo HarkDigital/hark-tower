@@ -41,6 +41,8 @@ declare global {
 
 installPrintPolyfills()
 
+let engineRef: Engine | null = null
+
 async function boot() {
   const canvas = document.getElementById('gl') as HTMLCanvasElement
   const track = document.getElementById('track')!
@@ -59,6 +61,13 @@ async function boot() {
   const loader = createLoader(document.getElementById('loader')!, { skip: params.has('nointro') })
 
   const engine = new Engine(canvas, track, stages)
+  engineRef = engine
+  // the GPU context is gone for good: show the static copy, not an empty canvas
+  engine.onContextGone = () => {
+    canvas.remove()
+    stages?.remove()
+    renderFallback(track)
+  }
   engine.assets.onProgress = (done, total) => loader.progress(total ? done / total : 0)
   if (document.fonts?.ready) engine.assets.track(document.fonts.ready)
   await engine.load(CHAPTERS, params.get('only'))
@@ -95,8 +104,15 @@ async function boot() {
   window.__hark.ready = true
 }
 
+
 boot().catch(err => {
   console.error('[hark] boot failed', err)
+  // Lenis would keep swallowing the wheel with nothing driving it
+  try {
+    engineRef?.lenis?.destroy()
+  } catch {
+    /* not started */
+  }
   const track = document.getElementById('track')
   if (track) renderFallback(track)
   document.getElementById('loader')?.remove()

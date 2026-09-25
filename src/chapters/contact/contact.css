@@ -1,0 +1,502 @@
+/* ------------------------------------------------------------------
+   TOPPING OUT — the contact spec plate. One graphite plate with the
+   hazard rail and corner bolts: left and vertically centred on landscape,
+   along the bottom on portrait. The address is the primary action, a big
+   signal-green signage plate. A drawing title-block stamp tops the plate.
+   Every selector is scoped to .stage-contact.
+   ------------------------------------------------------------------ */
+
+.stage-contact .ct-probe {
+  position: absolute;
+  top: var(--safe-top);
+  bottom: var(--safe-bottom);
+  left: var(--gutter);
+  right: var(--gutter);
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.stage-contact .ct-wrap {
+  position: absolute;
+  left: var(--gutter);
+  top: var(--safe-top);
+  bottom: var(--safe-bottom);
+  width: clamp(400px, 37vw, 560px);
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+
+.stage-contact .ct-panel {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: clamp(22px, 2.3vw, 34px) clamp(24px, 2.5vw, 36px) clamp(20px, 2vw, 28px);
+  background:
+    radial-gradient(circle at 9px 13px, #7d858e 0 2.2px, transparent 2.8px),
+    radial-gradient(circle at calc(100% - 9px) 13px, #7d858e 0 2.2px, transparent 2.8px),
+    radial-gradient(circle at 9px calc(100% - 9px), #7d858e 0 2.2px, transparent 2.8px),
+    radial-gradient(circle at calc(100% - 9px) calc(100% - 9px), #7d858e 0 2.2px, transparent 2.8px),
+    rgba(14, 17, 21, 0.9);
+  will-change: opacity, transform;
+}
+
+/* the drawing's title-block stamp (decorative) */
+.stage-contact .ct-block {
+  align-self: stretch;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -4px 0 clamp(14px, 1.5vw, 20px);
+  padding: 0 0 8px;
+  border-bottom: 1px solid rgba(143, 214, 255, 0.28);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #9fd9ff;
+}
+.stage-contact .ct-block-el {
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+
+.stage-contact .ct-eyebrow {
+  margin-bottom: clamp(12px, 1.3vw, 18px);
+}
+
+.stage-contact .ct-title {
+  font-size: clamp(3.4rem, 6.6vw, 7.4rem);
+  line-height: 0.86;
+  margin-bottom: clamp(12px, 1.3vw, 20px);
+  white-space: nowrap;
+}
+
+.stage-contact .ct-body {
+  max-width: 42ch;
+  margin-bottom: clamp(18px, 1.9vw, 26px);
+  color: rgba(244, 241, 234, 0.88);
+}
+
+/* ---- the address: the primary action */
+.stage-contact .ct-cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.stage-contact .ct-mail {
+  font-family: var(--font-sans);
+  font-size: clamp(16px, 1.3vw, 19px);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  padding: 16px 22px 17px 18px;
+  gap: 12px;
+}
+.stage-contact .ct-ico {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  display: block;
+}
+.stage-contact .ct-go {
+  display: inline-block;
+  font-family: var(--font-mono);
+  transition: transform 0.4s cubic-bezier(0.3, 1.28, 0.45, 1);
+}
+.stage-contact .ct-mail:hover .ct-go,
+.stage-contact .ct-mail:focus-visible .ct-go {
+  transform: translateX(4px);
+}
+
+/* the copy button: labels stacked in one cell so the width never jumps */
+.stage-contact .ct-copy {
+  display: inline-grid;
+  padding: 16px 18px 17px;
+  font-size: 12px;
+}
+.stage-contact .ct-copy > span {
+  grid-area: 1 / 1;
+  text-align: center;
+  transition: opacity 0.25s ease;
+}
+.stage-contact .ct-copy .ct-copy-done,
+.stage-contact .ct-copy .ct-copy-fail {
+  opacity: 0;
+}
+.stage-contact .ct-copy.is-copied .ct-copy-idle,
+.stage-contact .ct-copy.is-failed .ct-copy-idle {
+  opacity: 0;
+}
+.stage-contact .ct-copy.is-copied .ct-copy-done,
+.stage-contact .ct-copy.is-failed .ct-copy-fail {
+  opacity: 1;
+}
+.stage-contact .ct-copy.is-copied {
+  box-shadow: inset 0 0 0 1.5px var(--signal);
+}
+.stage-contact .ct-copy.is-copied .ct-copy-done {
+  color: var(--signal);
+}
+
+.stage-contact .ct-rule {
+  align-self: stretch;
+  margin: clamp(18px, 1.8vw, 24px) 0 clamp(12px, 1.2vw, 16px);
+}
+
+/* ---- other concepts */
+.stage-contact .ct-more {
+  display: grid;
+  gap: 6px;
+}
+.stage-contact .ct-more-label {
+  margin: 0;
+}
+.stage-contact .ct-links {
+  display: grid;
+  grid-template-columns: repeat(3, max-content);
+  gap: 0 22px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.stage-contact .ct-link,
+.stage-contact .ct-top {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  font-family: var(--font-sans);
+  font-size: 14.5px;
+  line-height: 1.9;
+  color: var(--fg);
+  text-decoration: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 2px;
+}
+.stage-contact .ct-arr {
+  color: var(--signal);
+  font-size: 0.86em;
+  transition: transform 0.4s cubic-bezier(0.3, 1.28, 0.45, 1);
+}
+.stage-contact .ct-link:hover,
+.stage-contact .ct-link:focus-visible,
+.stage-contact .ct-top:hover,
+.stage-contact .ct-top:focus-visible {
+  color: var(--signal);
+}
+.stage-contact .ct-link:hover .ct-arr,
+.stage-contact .ct-link:focus-visible .ct-arr {
+  transform: translate(2px, -2px);
+}
+.stage-contact .ct-top:hover .ct-arr,
+.stage-contact .ct-top:focus-visible .ct-arr {
+  transform: translateY(-2px);
+}
+
+/* ---- colophon */
+.stage-contact .ct-foot {
+  align-self: stretch;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 18px;
+  margin-top: clamp(12px, 1.2vw, 18px);
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.stage-contact .ct-top {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1.5;
+}
+.stage-contact .ct-legal {
+  margin: 0;
+  text-wrap: balance;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.6;
+  color: rgba(244, 241, 234, 0.74);
+}
+.stage-contact .ct-nw {
+  white-space: nowrap;
+}
+
+/* ---- drawing annotations (dom.ts Callout) */
+.stage-contact .ct-callout .callout-label {
+  font-size: 10.5px;
+}
+/* the dimension's figure, written along the (vertical) dimension line */
+.stage-contact .ct-dim {
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: nowrap;
+  pointer-events: none;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.5;
+  color: var(--fg);
+  padding: 2px 8px;
+  background: rgba(13, 53, 102, 0.9);
+  border: 1px solid rgba(143, 214, 255, 0.55);
+  will-change: transform, opacity;
+}
+
+/* ---- fit levels (measured in hud.ts): short screens step the plate down */
+.stage-contact.ct-fit-1 .ct-title {
+  font-size: clamp(2.9rem, 5.2vw, 5.6rem);
+}
+.stage-contact.ct-fit-1 .ct-body {
+  font-size: 14.5px;
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+.stage-contact.ct-fit-1 .ct-rule {
+  margin: 16px 0 10px;
+}
+.stage-contact.ct-fit-1 .ct-block {
+  margin-bottom: 12px;
+}
+
+.stage-contact.ct-fit-2 .ct-panel {
+  padding: 18px 22px 16px;
+}
+.stage-contact.ct-fit-2 .ct-block {
+  display: none;
+}
+.stage-contact.ct-fit-2 .ct-title {
+  font-size: clamp(2.5rem, 4.4vw, 4.4rem);
+  margin-bottom: 10px;
+}
+.stage-contact.ct-fit-2 .ct-body {
+  font-size: 13.5px;
+  line-height: 1.46;
+  margin-bottom: 14px;
+}
+.stage-contact.ct-fit-2 .ct-mail,
+.stage-contact.ct-fit-2 .ct-copy {
+  padding-top: 13px;
+  padding-bottom: 13px;
+}
+.stage-contact.ct-fit-2 .ct-rule {
+  margin: 12px 0 8px;
+}
+.stage-contact.ct-fit-2 .ct-link {
+  font-size: 13.5px;
+  line-height: 1.7;
+}
+.stage-contact.ct-fit-2 .ct-foot {
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+.stage-contact.ct-fit-3 .ct-eyebrow {
+  margin-bottom: 8px;
+}
+.stage-contact.ct-fit-3 .ct-title {
+  font-size: clamp(2.2rem, 3.8vw, 3.4rem);
+  margin-bottom: 8px;
+}
+.stage-contact.ct-fit-3 .ct-body {
+  font-size: 13px;
+  line-height: 1.42;
+  margin-bottom: 12px;
+}
+.stage-contact.ct-fit-3 .ct-mail,
+.stage-contact.ct-fit-3 .ct-copy {
+  padding-top: 11px;
+  padding-bottom: 11px;
+}
+.stage-contact.ct-fit-3 .ct-rule {
+  display: none;
+}
+.stage-contact.ct-fit-3 .ct-more {
+  gap: 2px;
+  margin-top: 12px;
+}
+.stage-contact.ct-fit-3 .ct-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 14px;
+}
+.stage-contact.ct-fit-3 .ct-link {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.stage-contact.ct-fit-3 .ct-legal {
+  font-size: 10px;
+}
+
+/* ---- portrait: the plate runs along the bottom, the tower rises above it */
+@media (max-width: 767px), (max-aspect-ratio: 9/10) {
+  .stage-contact .ct-wrap {
+    top: auto;
+    left: var(--gutter);
+    right: var(--gutter);
+    bottom: var(--safe-bottom);
+    width: auto;
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+  }
+  .stage-contact .ct-panel {
+    max-width: 640px;
+    padding: 22px 24px 18px;
+  }
+  .stage-contact .ct-title {
+    font-size: clamp(2.8rem, 11.5vw, 5.6rem);
+  }
+  .stage-contact .ct-body {
+    max-width: 54ch;
+  }
+}
+
+@media (max-width: 480px) {
+  .stage-contact .ct-panel {
+    padding: 16px 16px 14px;
+  }
+  .stage-contact .ct-block {
+    display: none;
+  }
+  .stage-contact .ct-eyebrow {
+    margin-bottom: 10px;
+  }
+  .stage-contact .ct-title {
+    margin-bottom: 10px;
+  }
+  .stage-contact .ct-body {
+    font-size: 14px;
+    line-height: 1.48;
+    margin-bottom: 14px;
+  }
+  .stage-contact .ct-cta {
+    gap: 8px;
+    align-self: stretch;
+    flex-wrap: nowrap;
+  }
+  .stage-contact .ct-mail {
+    flex: 1 1 auto;
+    justify-content: center;
+    font-size: 15.5px;
+    padding: 14px 12px;
+    gap: 9px;
+    min-width: 0;
+  }
+  .stage-contact .ct-copy {
+    flex: none;
+    padding: 14px 14px;
+  }
+  /* "Copy" is enough on a phone; the button still says what it copies */
+  .stage-contact .ct-copy-more {
+    display: none;
+  }
+  .stage-contact .ct-rule {
+    margin: 14px 0 8px;
+  }
+  .stage-contact .ct-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 14px;
+  }
+  .stage-contact .ct-link {
+    font-size: 13.5px;
+    line-height: 1.75;
+  }
+  .stage-contact .ct-foot {
+    margin-top: 8px;
+    padding-top: 8px;
+    gap: 2px 14px;
+  }
+  .stage-contact .ct-legal {
+    font-size: 9.5px;
+    letter-spacing: 0.06em;
+  }
+}
+@media (max-width: 380px) {
+  .stage-contact .ct-go {
+    display: none;
+  }
+}
+@media (max-width: 340px) {
+  .stage-contact .ct-ico {
+    display: none;
+  }
+}
+
+/* ---- short landscape phones: thin chrome bands, a compact, wider plate */
+@media (orientation: landscape) and (max-height: 500px) {
+  .stage-contact .ct-wrap {
+    width: min(500px, 58vw);
+  }
+  .stage-contact .ct-panel {
+    padding: 11px 16px 9px;
+  }
+  .stage-contact .ct-block {
+    display: none;
+  }
+  .stage-contact .ct-eyebrow {
+    margin-bottom: 4px;
+    font-size: 10.5px;
+  }
+  .stage-contact .ct-title {
+    font-size: clamp(1.8rem, 8vh, 2.5rem);
+    margin-bottom: 4px;
+  }
+  .stage-contact .ct-body {
+    font-size: 12px;
+    line-height: 1.4;
+    margin-bottom: 8px;
+    max-width: none;
+  }
+  .stage-contact .ct-mail {
+    font-size: 14px;
+    padding: 9px 14px;
+  }
+  .stage-contact .ct-copy {
+    padding: 9px 14px;
+  }
+  .stage-contact .ct-ico {
+    width: 17px;
+    height: 17px;
+  }
+  .stage-contact .ct-rule {
+    display: none;
+  }
+  .stage-contact .ct-more {
+    gap: 0;
+    margin-top: 7px;
+  }
+  .stage-contact .ct-more-label {
+    font-size: 10px;
+  }
+  .stage-contact .ct-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 12px;
+  }
+  .stage-contact .ct-link {
+    font-size: 12.5px;
+    line-height: 1.55;
+  }
+  .stage-contact .ct-foot {
+    margin-top: 4px;
+    padding-top: 4px;
+    gap: 0 14px;
+  }
+  .stage-contact .ct-legal {
+    font-size: 9.5px;
+    letter-spacing: 0.04em;
+  }
+}

@@ -259,7 +259,9 @@ a {
   margin: 0;
   color: var(--fg);
   text-wrap: balance;
-  text-shadow: 0 2px 28px rgba(8, 10, 14, 0.38);
+  /* drop-shadow on the heading (not text-shadow): the hoisted words clip
+     their own boxes, which cut text-shadows into dark rectangles */
+  filter: drop-shadow(0 2px 14px rgba(8, 10, 14, 0.4));
 }
 .hud-h2 {
   font-family: var(--font-display);
@@ -271,7 +273,7 @@ a {
   margin: 0;
   color: var(--fg);
   text-wrap: balance;
-  text-shadow: 0 2px 22px rgba(8, 10, 14, 0.35);
+  filter: drop-shadow(0 2px 12px rgba(8, 10, 14, 0.36));
 }
 /* <em> = the accent words: Hark signal green (the crown light) */
 .hud-title em,
@@ -511,7 +513,7 @@ a {
 .sr-copy :is(a, button):focus {
   position: fixed;
   left: 50%;
-  bottom: calc(var(--safe-bottom) + 8px);
+  top: calc(var(--safe-top) + 8px);
   transform: translateX(-50%);
   z-index: 40;
   width: max-content;
@@ -539,7 +541,7 @@ a {
 .sr-copy :is(h1, h2):focus {
   position: fixed;
   left: 50%;
-  bottom: calc(var(--safe-bottom) + 8px);
+  top: calc(var(--safe-top) + 8px);
   transform: translateX(-50%);
   z-index: 40;
   margin: 0;
@@ -557,7 +559,7 @@ a {
 .sr-copy [data-copy-status]:not(:empty) {
   position: fixed;
   left: 50%;
-  bottom: calc(var(--safe-bottom) + 64px);
+  top: calc(var(--safe-top) + 64px);
   transform: translateX(-50%);
   z-index: 40;
   font: 500 12px/1 var(--font-mono);
@@ -597,4 +599,17 @@ a {
 .skip-link:focus {
   transform: translate(-50%, 0);
   outline: none;
+}
+
+/* phones and scaled-down devices (html.lowfx, set by the engine): no
+   backdrop-filter over the animating canvas — a denser plate instead */
+.lowfx .hud-panel {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background:
+    radial-gradient(circle at 9px 13px, #7d858e 0 2.2px, transparent 2.8px),
+    radial-gradient(circle at calc(100% - 9px) 13px, #7d858e 0 2.2px, transparent 2.8px),
+    radial-gradient(circle at 9px calc(100% - 9px), #7d858e 0 2.2px, transparent 2.8px),
+    radial-gradient(circle at calc(100% - 9px) calc(100% - 9px), #7d858e 0 2.2px, transparent 2.8px),
+    rgba(16, 19, 23, 0.93);
 }
